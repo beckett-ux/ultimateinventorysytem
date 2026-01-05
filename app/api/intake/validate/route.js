@@ -73,6 +73,7 @@ export async function POST(request) {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "Return JSON only. No extra text." },
         { role: "user", content: gptPrompt },
