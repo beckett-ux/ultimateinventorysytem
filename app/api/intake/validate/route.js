@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import OpenAI from "openai";
+import { z } from "zod";
 import { intakeInputSchema, intakeOutputSchema } from "@/lib/intakeSchema";
 
 const normalizeTitle = ({ brand, category, subCategory }) => {
@@ -18,6 +20,20 @@ const titleFormatRules = [
   "Use single spaces only. No punctuation or separators.",
 ];
 
+const gptTitleSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+});
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const parseGptJson = (content) => {
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    return { error };
+  }
+};
+
 const normalizeTags = ({ size, condition, location }) => {
   return [
     `size_${size.trim()}`,
@@ -36,8 +52,53 @@ export async function POST(request) {
     const payload = await request.json();
     const parsed = intakeInputSchema.parse(payload);
 
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY is not configured" },
+        { status: 500 }
+      );
+    }
+
+    const gptPrompt = [
+      "You are normalizing product titles.",
+      `Brand: ${parsed.brand.trim()}`,
+      `ItemDescription: ${parsed.itemName.trim()}`,
+      `SubCategory: ${parsed.subCategory.trim()}`,
+      `Format: ${titleFormat}`,
+      "Rules:",
+      ...titleFormatRules.map((rule) => `- ${rule}`),
+      'Return JSON only in the form: {"title":"Brand ItemDescription SubCategory"}',
+    ].join("\n");
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "Return JSON only. No extra text." },
+        { role: "user", content: gptPrompt },
+      ],
+    });
+
+    const gptContent = completion.choices?.[0]?.message?.content?.trim();
+    const gptJson = parseGptJson(gptContent || "");
+    if (gptJson.error) {
+      return NextResponse.json(
+        { error: "GPT response was not valid JSON" },
+        { status: 400 }
+      );
+    }
+
+    const gptResult = gptTitleSchema.safeParse(gptJson);
+    if (!gptResult.success) {
+      return NextResponse.json(
+        { error: "GPT output validation failed", details: gptResult.error.issues },
+        { status: 400 }
+      );
+    }
+
     const response = {
-      title: normalizeTitle(parsed),
+      title: gptResult.data.title,
       titleFormat,
       titleFormatRules,
       normalizedBrand: parsed.brand.trim(),

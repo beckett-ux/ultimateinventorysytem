@@ -22,11 +22,11 @@ export default function Home() {
   const [error, setError] = useState(null);
 
   const titlePreview = useMemo(() => {
-    const parts = [form.brand, form.category, form.subCategory]
+    const parts = [form.brand, form.itemName, form.subCategory]
       .map((value) => value.trim())
       .filter(Boolean);
     return parts.length ? parts.join(" ") : "";
-  }, [form.brand, form.category, form.subCategory]);
+  }, [form.brand, form.itemName, form.subCategory]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -75,11 +75,11 @@ export default function Home() {
           <input name="brand" value={form.brand} onChange={handleChange} />
         </label>
         <label>
-          Item name
+          Item description (for title)
           <input name="itemName" value={form.itemName} onChange={handleChange} />
         </label>
         <label>
-          Item description (for title)
+          Category
           <input name="category" value={form.category} onChange={handleChange} />
         </label>
         <label>
