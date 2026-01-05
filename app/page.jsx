@@ -15,13 +15,143 @@ const defaultForm = {
   cost: "",
   price: "",
   location: "",
+  vendorSource: "",
+  intakeLabel: "",
 };
+
+const categoryOptions = [
+  "Accessories",
+  "Apparel",
+  "Bags",
+  "Footwear",
+  "Jewelry",
+  "Outerwear",
+  "Specialty",
+];
+
+const conditionOptions = [
+  "New",
+  "Like New",
+  "Excellent",
+  "Very Good",
+  "Good",
+  "Fair",
+];
+
+const locationOptions = [
+  { label: "DuPont Store", value: "dupont" },
+  { label: "Charlotte Store", value: "charlotte" },
+];
+
+const steps = [
+  {
+    id: "brand",
+    name: "brand",
+    label: "Start typing a brand",
+    helper: "Press tab to autocomplete from the approved brand list.",
+    placeholder: "Rick Owens",
+    type: "text",
+    list: "approved-brands",
+  },
+  {
+    id: "itemName",
+    name: "itemName",
+    label: "Describe the item",
+    helper: "Keep it short so the title stays tight.",
+    placeholder: "Pony Hair Ramones",
+    type: "text",
+  },
+  {
+    id: "category",
+    name: "category",
+    label: "Pick the primary category",
+    helper: "This controls the Shopify category path.",
+    type: "select",
+    options: categoryOptions,
+    placeholder: "Choose a category",
+  },
+  {
+    id: "subCategory",
+    name: "subCategory",
+    label: "Add a sub-category",
+    helper: "Example: Sneaker, Tote, Trench.",
+    placeholder: "Sneaker",
+    type: "text",
+  },
+  {
+    id: "shopifyDescription",
+    name: "shopifyDescription",
+    label: "Write the listing description",
+    helper: "This becomes the Shopify description field.",
+    placeholder: "Short description for the listing.",
+    type: "text",
+  },
+  {
+    id: "size",
+    name: "size",
+    label: "Enter the size",
+    helper: "Use brand sizing if possible.",
+    placeholder: "IT 40",
+    type: "text",
+  },
+  {
+    id: "condition",
+    name: "condition",
+    label: "Select the condition",
+    helper: "Match the condition tag used internally.",
+    type: "select",
+    options: conditionOptions,
+    placeholder: "Choose a condition",
+  },
+  {
+    id: "location",
+    name: "location",
+    label: "Choose a store location",
+    helper: "Inventory will be set to 1 at this location.",
+    type: "select",
+    options: locationOptions,
+    placeholder: "Select location",
+  },
+  {
+    id: "vendorSource",
+    name: "vendorSource",
+    label: "Who did this come from?",
+    helper: "Vendor, consignor, or internal source.",
+    placeholder: "Consignment - Client Name",
+    type: "text",
+  },
+  {
+    id: "intakeLabel",
+    name: "intakeLabel",
+    label: "Add the intake label",
+    helper: "Use the internal identifier or barcode label.",
+    placeholder: "INT-2024-0912",
+    type: "text",
+  },
+  {
+    id: "cost",
+    name: "cost",
+    label: "What did we pay?",
+    helper: "This becomes the Shopify cost field.",
+    placeholder: "$250",
+    type: "text",
+  },
+  {
+    id: "price",
+    name: "price",
+    label: "Set the sell price",
+    helper: "This becomes the Shopify price field.",
+    placeholder: "$695",
+    type: "text",
+  },
+];
 
 export default function Home() {
   const [form, setForm] = useState(defaultForm);
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
+  const [stepIndex, setStepIndex] = useState(0);
 
   const titlePreview = useMemo(() => {
     const parts = [form.brand, form.itemName, form.subCategory]
@@ -30,9 +160,26 @@ export default function Home() {
     return parts.length ? parts.join(" ") : "";
   }, [form.brand, form.itemName, form.subCategory]);
 
+  const activeStep = steps[stepIndex];
+  const isLastStep = stepIndex === steps.length - 1;
+  const locationLabel =
+    locationOptions.find((option) => option.value === form.location)?.label ||
+    "";
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleNext = () => {
+    if (isLastStep) {
+      return;
+    }
+    setStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
+  };
+
+  const handleBack = () => {
+    setStepIndex((prev) => Math.max(prev - 1, 0));
   };
 
   const handleSubmit = async (event) => {
@@ -63,86 +210,134 @@ export default function Home() {
     }
   };
 
+  const handleKeyDown = (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+
+    if (isLastStep) {
+      handleSubmit(event);
+    } else {
+      handleNext();
+    }
+  };
+
+  const renderField = () => {
+    if (activeStep.type === "select") {
+      return (
+        <select
+          name={activeStep.name}
+          value={form[activeStep.name]}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+        >
+          <option value="">{activeStep.placeholder}</option>
+          {activeStep.options.map((option) => {
+            if (typeof option === "string") {
+              return (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              );
+            }
+
+            return (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            );
+          })}
+        </select>
+      );
+    }
+
+    return (
+      <input
+        name={activeStep.name}
+        value={form[activeStep.name]}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        placeholder={activeStep.placeholder}
+        list={activeStep.list}
+        autoComplete="off"
+      />
+    );
+  };
+
   return (
-    <main>
-      <h1>Inventory Intake</h1>
-      <p>
-        Start a 1-of-1 intake and preview the GPT-normalized output before it
-        hits Shopify.
-      </p>
+    <main className="intake-shell">
+      <header className="intake-header">
+        <span className="intake-kicker">Inventory Intake</span>
+        <h1>Start inventorying</h1>
+        <p>
+          A guided, ChatGPT-style flow that builds the exact Shopify payload for
+          1-of-1 items.
+        </p>
+      </header>
 
-      <form onSubmit={handleSubmit}>
-        <label>
-          Brand
-          <input
-            list="approved-brands"
-            name="brand"
-            value={form.brand}
-            onChange={handleChange}
-          />
-          <datalist id="approved-brands">
-            {approvedBrands.map((brand) => (
-              <option key={brand} value={brand} />
-            ))}
-          </datalist>
-        </label>
-        <label>
-          Item description (for title)
-          <input name="itemName" value={form.itemName} onChange={handleChange} />
-        </label>
-        <label>
-          Category
-          <input name="category" value={form.category} onChange={handleChange} />
-        </label>
-        <label>
-          Sub-category
-          <input
-            name="subCategory"
-            value={form.subCategory}
-            onChange={handleChange}
-          />
-        </label>
-        <label>
-          Shopify description
-          <input
-            name="shopifyDescription"
-            value={form.shopifyDescription}
-            onChange={handleChange}
-          />
-        </label>
-        <label>
-          Size
-          <input name="size" value={form.size} onChange={handleChange} />
-        </label>
-        <label>
-          Condition
-          <input name="condition" value={form.condition} onChange={handleChange} />
-        </label>
-        <label>
-          Intake cost
-          <input name="cost" value={form.cost} onChange={handleChange} />
-        </label>
-        <label>
-          Price
-          <input name="price" value={form.price} onChange={handleChange} />
-        </label>
-        <label>
-          Location
-          <select name="location" value={form.location} onChange={handleChange}>
-            <option value="">Select location</option>
-            <option value="dupont">DuPont</option>
-            <option value="charlotte">Charlotte</option>
-          </select>
-        </label>
+      <form onSubmit={handleSubmit} className="intake-form">
+        <section className="intake-card" key={activeStep.id}>
+          <div className="intake-step">
+            <span className="step-count">
+              Step {stepIndex + 1} of {steps.length}
+            </span>
+            <h2>{activeStep.label}</h2>
+            <p>{activeStep.helper}</p>
+          </div>
 
-        <button type="submit" disabled={status === "loading"}>
-          {status === "loading" ? "Validating..." : "Validate intake"}
-        </button>
+          <div className="intake-input">{renderField()}</div>
+
+          <div className="intake-actions">
+            <button
+              type="button"
+              className="ghost"
+              onClick={handleBack}
+              disabled={stepIndex === 0}
+            >
+              Back
+            </button>
+            <button
+              type={isLastStep ? "submit" : "button"}
+              onClick={isLastStep ? undefined : handleNext}
+              disabled={status === "loading"}
+            >
+              {isLastStep
+                ? status === "loading"
+                  ? "Validating..."
+                  : "Generate preview"
+                : "Next"}
+            </button>
+          </div>
+        </section>
       </form>
 
-      <section className="preview">
-        <strong>Live title preview</strong>
-        <div>{preview?.title || titlePreview || "Waiting on input..."}</div>
+      <section className="intake-preview">
+        <div>
+          <strong>Live title preview</strong>
+          <div className="preview-title">
+            {preview?.title || titlePreview || "Waiting on input..."}
+          </div>
+        </div>
+
+        <div className="preview-meta">
+          <div>
+            <span>Category</span>
+            <strong>
+              {form.category && form.subCategory
+                ? `${form.category} > ${form.subCategory}`
+                : "Select a category"}
+            </strong>
+          </div>
+          <div>
+            <span>Size</span>
+            <strong>{form.size || "Add size"}</strong>
+          </div>
+          <div>
+            <span>Location</span>
+            <strong>{locationLabel || "Pick a store"}</strong>
+          </div>
+        </div>
 
         {status === "error" && <div className="code-block">{error}</div>}
         {preview && (
@@ -152,6 +347,12 @@ export default function Home() {
           </details>
         )}
       </section>
+
+      <datalist id="approved-brands">
+        {approvedBrands.map((brand) => (
+          <option key={brand} value={brand} />
+        ))}
+      </datalist>
     </main>
   );
 }
