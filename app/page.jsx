@@ -7,6 +7,7 @@ const defaultForm = {
   itemName: "",
   category: "",
   subCategory: "",
+  shopifyDescription: "",
   size: "",
   condition: "",
   cost: "",
@@ -78,7 +79,7 @@ export default function Home() {
           <input name="itemName" value={form.itemName} onChange={handleChange} />
         </label>
         <label>
-          Category
+          Item description (for title)
           <input name="category" value={form.category} onChange={handleChange} />
         </label>
         <label>
@@ -86,6 +87,14 @@ export default function Home() {
           <input
             name="subCategory"
             value={form.subCategory}
+            onChange={handleChange}
+          />
+        </label>
+        <label>
+          Shopify description
+          <input
+            name="shopifyDescription"
+            value={form.shopifyDescription}
             onChange={handleChange}
           />
         </label>

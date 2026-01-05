@@ -8,6 +8,16 @@ const normalizeTitle = ({ brand, category, subCategory }) => {
     .join(" ");
 };
 
+const titleFormat = "{BrandName} {ItemDescription} {SubCategory}";
+
+const titleFormatRules = [
+  "Title must contain exactly three components: BrandName, ItemDescription, SubCategory.",
+  "BrandName must match the approved brand list exactly (spelling/casing).",
+  "ItemDescription should be a short identifying phrase (no brand repeat, avoid subcategory repeat unless needed).",
+  "SubCategory must be the final selected category label.",
+  "Use single spaces only. No punctuation or separators.",
+];
+
 const normalizeTags = ({ size, condition, location }) => {
   return [
     `size_${size.trim()}`,
@@ -28,6 +38,8 @@ export async function POST(request) {
 
     const response = {
       title: normalizeTitle(parsed),
+      titleFormat,
+      titleFormatRules,
       normalizedBrand: parsed.brand.trim(),
       categoryPath: normalizeCategoryPath(parsed),
       tags: normalizeTags(parsed),
@@ -36,6 +48,7 @@ export async function POST(request) {
         price: parsed.price.trim(),
       },
       location: parsed.location.trim(),
+      shopifyDescription: parsed.shopifyDescription.trim(),
     };
 
     const output = intakeOutputSchema.parse(response);
