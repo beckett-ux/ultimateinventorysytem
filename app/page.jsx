@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import { approvedBrands } from "@/lib/approvedBrands";
+
 const defaultForm = {
   brand: "",
   itemName: "",
@@ -72,7 +74,17 @@ export default function Home() {
       <form onSubmit={handleSubmit}>
         <label>
           Brand
-          <input name="brand" value={form.brand} onChange={handleChange} />
+          <input
+            list="approved-brands"
+            name="brand"
+            value={form.brand}
+            onChange={handleChange}
+          />
+          <datalist id="approved-brands">
+            {approvedBrands.map((brand) => (
+              <option key={brand} value={brand} />
+            ))}
+          </datalist>
         </label>
         <label>
           Item description (for title)
