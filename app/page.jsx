@@ -130,11 +130,14 @@ export default function Home() {
 
       <section className="preview">
         <strong>Live title preview</strong>
-        <div>{titlePreview || "Waiting on input..."}</div>
+        <div>{preview?.title || titlePreview || "Waiting on input..."}</div>
 
         {status === "error" && <div className="code-block">{error}</div>}
         {preview && (
-          <div className="code-block">{JSON.stringify(preview, null, 2)}</div>
+          <details className="code-block">
+            <summary>View normalized payload</summary>
+            <pre>{JSON.stringify(preview, null, 2)}</pre>
+          </details>
         )}
       </section>
     </main>

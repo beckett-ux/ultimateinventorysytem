@@ -3,8 +3,20 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { intakeInputSchema, intakeOutputSchema } from "@/lib/intakeSchema";
 
-const normalizeTitle = ({ brand, category, subCategory }) => {
-  return [brand, category, subCategory]
+const MAX_ITEM_DESCRIPTION_WORDS = 6;
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const toTitleCase = (value) => {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+};
+
+const normalizeTitle = ({ brand, itemDescription, subCategory }) => {
+  return [brand, itemDescription, subCategory]
     .map((value) => value.trim())
     .filter(Boolean)
     .join(" ");
@@ -18,6 +30,7 @@ const titleFormatRules = [
   "ItemDescription should be a short identifying phrase (no brand repeat, avoid subcategory repeat unless needed).",
   "SubCategory must be the final selected category label.",
   "Use single spaces only. No punctuation or separators.",
+  "Use title case for ItemDescription and SubCategory.",
 ];
 
 const gptTitleSchema = z.object({
@@ -67,6 +80,7 @@ export async function POST(request) {
       `Format: ${titleFormat}`,
       "Rules:",
       ...titleFormatRules.map((rule) => `- ${rule}`),
+      `Keep ItemDescription to ${MAX_ITEM_DESCRIPTION_WORDS} words or fewer.`,
       'Return JSON only in the form: {"title":"Brand ItemDescription SubCategory"}',
     ].join("\n");
 
@@ -97,11 +111,40 @@ export async function POST(request) {
       );
     }
 
+    const normalizedBrand = parsed.brand.trim();
+    const normalizedSubCategory = toTitleCase(parsed.subCategory.trim());
+    const normalizedTitle = gptResult.data.title.replace(/\s+/g, " ").trim();
+    const brandPattern = new RegExp(
+      `^${escapeRegExp(normalizedBrand)}\\s+`,
+      "i"
+    );
+    const subCategoryPattern = new RegExp(
+      `\\s+${escapeRegExp(parsed.subCategory.trim())}$`,
+      "i"
+    );
+    const extractedItemDescription = normalizedTitle
+      .replace(brandPattern, "")
+      .replace(subCategoryPattern, "")
+      .trim();
+    const rawItemDescription =
+      extractedItemDescription || parsed.itemName.trim();
+    const shortItemDescription = rawItemDescription
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, MAX_ITEM_DESCRIPTION_WORDS)
+      .join(" ");
+    const normalizedItemDescription = toTitleCase(shortItemDescription);
+    const normalizedTitleOutput = normalizeTitle({
+      brand: normalizedBrand,
+      itemDescription: normalizedItemDescription,
+      subCategory: normalizedSubCategory,
+    });
+
     const response = {
-      title: gptResult.data.title,
+      title: normalizedTitleOutput,
       titleFormat,
       titleFormatRules,
-      normalizedBrand: parsed.brand.trim(),
+      normalizedBrand,
       categoryPath: normalizeCategoryPath(parsed),
       tags: normalizeTags(parsed),
       pricing: {
