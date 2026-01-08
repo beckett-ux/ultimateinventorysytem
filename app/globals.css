@@ -131,6 +131,11 @@ textarea {
   font-size: 22px;
 }
 
+.spotlight-field.compact {
+  padding: 12px 14px;
+  font-size: 15px;
+}
+
 .spotlight-field input {
   width: 100%;
   border: none;
@@ -142,6 +147,10 @@ textarea {
   color: #101114;
 }
 
+.spotlight-field.compact input {
+  font-size: 15px;
+}
+
 .spotlight-ghost {
   position: absolute;
   inset: 16px 20px;
@@ -151,6 +160,12 @@ textarea {
   display: flex;
   gap: 0;
   align-items: center;
+  white-space: pre;
+}
+
+.spotlight-field.compact .spotlight-ghost {
+  inset: 12px 14px;
+  font-size: 15px;
 }
 
 .spotlight-ghost .ghost-typed {
@@ -218,22 +233,37 @@ textarea {
   gap: 12px;
 }
 
-.dropdown-panel input {
-  border-radius: 10px;
-  border: 1px solid #e2e5eb;
-  padding: 10px 12px;
-  font-size: 14px;
+.category-picker {
+  position: relative;
 }
 
-.dropdown-list {
-  max-height: 220px;
-  overflow: auto;
+.category-panel {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.category-column {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
 }
 
-.dropdown-list button {
+.category-label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9aa1ad;
+}
+
+.category-column button {
   background: #f8f9fc;
   border: 1px solid #eef1f7;
   border-radius: 10px;
@@ -243,48 +273,42 @@ textarea {
   font-size: 14px;
 }
 
-.dropdown-list button:hover {
+.category-column button:hover {
   border-color: #cbd5f5;
   background: #eef2ff;
+}
+
+.category-column button.is-selected {
+  border-color: #111827;
+  background: #111827;
+  color: #fff;
 }
 
 .condition-field {
   gap: 16px;
 }
 
-.condition-values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.condition-scale {
+  display: grid;
+  grid-template-columns: repeat(21, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
 }
 
-.condition-values button {
-  border-radius: 999px;
+.condition-scale button {
+  border-radius: 10px;
   border: 1px solid #d7dbe4;
   background: #f4f6fb;
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 6px 0;
+  font-size: 11px;
   cursor: pointer;
+  min-width: 0;
 }
 
-.condition-values button.is-selected {
+.condition-scale button.is-selected {
   background: #111827;
   color: #fff;
   border-color: #111827;
-}
-
-.condition-slider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.condition-slider input[type="range"] {
-  flex: 1;
-}
-
-.condition-slider input[type="text"] {
-  width: 80px;
 }
 
 .segmented {
@@ -364,6 +388,56 @@ textarea {
   gap: 12px;
 }
 
+.product-preview {
+  background: #0f172a;
+  gap: 16px;
+}
+
+.product-preview h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-price {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.preview-condition {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.preview-description {
+  color: #cbd5f5;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  font-size: 12px;
+  color: #cbd5f5;
+}
+
+.preview-grid strong {
+  color: #fff;
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
 .summary-label {
   font-size: 11px;
   text-transform: uppercase;
@@ -434,6 +508,12 @@ textarea {
   .spotlight-field input,
   .spotlight-ghost {
     font-size: 18px;
+  }
+
+  .spotlight-field.compact,
+  .spotlight-field.compact input,
+  .spotlight-field.compact .spotlight-ghost {
+    font-size: 14px;
   }
 
   .sticky-actions {
