@@ -206,17 +206,13 @@ textarea {
 .quick-steps {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .quickStep {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
-  border-radius: 16px;
-  border: 1px solid #e5e7eb;
-  background: #f9fafb;
+  gap: 10px;
 }
 
 .quickStepFieldset {
@@ -237,10 +233,8 @@ textarea {
 }
 
 .quickStepLabel {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: #64748b;
+  font-size: 13px;
+  color: #5b616d;
   font-weight: 600;
 }
 
@@ -249,29 +243,8 @@ textarea {
   color: #6b7280;
 }
 
-.quickModeRoot .quickStep input,
-.quickModeRoot .quickStep textarea,
-.quickModeRoot .quick-category input {
-  border-radius: 12px;
-  border: 1px solid #e1e4ec;
-  padding: 12px 14px;
-  font-size: 15px;
-  background: #fbfcff;
-  outline: none;
-  color: #101114;
-}
-
-.quickModeRoot .quickStep textarea {
-  min-height: 120px;
-  resize: vertical;
-}
-
-.quickModeRoot .quickStep input:focus,
-.quickModeRoot .quickStep textarea:focus,
-.quickModeRoot .quick-category input:focus,
-.quickModeRoot .segmented:focus {
-  border-color: #4338ca;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+.quickItemDetails {
+  width: 100%;
 }
 
 .quick-category {
@@ -398,6 +371,7 @@ textarea {
   background: #fbfcff;
   outline: none;
   color: #101114;
+  width: 100%;
 }
 
 .field textarea {

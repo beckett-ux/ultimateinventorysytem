@@ -104,6 +104,18 @@ const dedupeAdjacentWords = (value) => {
   return deduped.join(" ");
 };
 
+const normalizeShopifyDescription = (value) => {
+  if (!value) {
+    return "";
+  }
+  const lines = value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.join("\n");
+};
+
 export async function POST(request) {
   try {
     const payload = await request.json();
@@ -129,6 +141,13 @@ export async function POST(request) {
       "Cost and price must be numeric strings without '$'.",
       "Avoid adjacent duplicate words in itemName. Do not repeat category words in itemName.",
       "If condition is written like 9/10, return 9.",
+      "Generate shopifyDescription as store-ready copy with corrected spelling and grammar.",
+      "Do not include internal cost/pricing in shopifyDescription.",
+      "shopifyDescription format (plain text with line breaks, keep consistent order):",
+      "Line 1: Single sentence summary (Brand + item + size if known).",
+      "Line 2: Condition sentence using normalized score (Condition: 9/10. ...).",
+      "Line 3: Includes: ... (only if provided).",
+      "Line 4: Ships from <location> (only if provided).",
       'Example input: "Rick Owens, pony hair, Ramone, size 12, sneaker"',
       'Possible output: {"brand":"Rick Owens","itemName":"Pony Hair Ramones","categoryPath":"Mens > Shoes > Sneakers","size":"12","condition":"8","cost":"300","price":"900","location":"","vendorSource":""}',
       `Input: """${parsedInput.rawInput}"""`,
@@ -169,7 +188,9 @@ export async function POST(request) {
       brand: gptResult.data.brand.trim(),
       itemName: dedupeAdjacentWords(gptResult.data.itemName.trim()),
       categoryPath: gptResult.data.categoryPath.trim(),
-      shopifyDescription: gptResult.data.shopifyDescription.trim(),
+      shopifyDescription: normalizeShopifyDescription(
+        gptResult.data.shopifyDescription
+      ),
       size: gptResult.data.size.trim(),
       condition: normalizeConditionInput(gptResult.data.condition),
       cost: parseMoney(gptResult.data.cost),
