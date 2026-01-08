@@ -7,6 +7,14 @@ const MAX_ITEM_DESCRIPTION_WORDS = 6;
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const endsWithWord = (value, word) => {
+  if (!value || !word) {
+    return false;
+  }
+  const escaped = escapeRegExp(word);
+  return new RegExp(`\\b${escaped}$`, "i").test(value.trim());
+};
+
 const toTitleCase = (value) => {
   return value
     .split(/\s+/)
@@ -48,12 +56,13 @@ const normalizeTitle = ({ brand, itemDescription, subCategory }) => {
 const titleFormat = "{BrandName} {ItemDescription} {SubCategory}";
 
 const titleFormatRules = [
-  "Title must contain exactly three components: BrandName, ItemDescription, SubCategory.",
+  "Title must contain BrandName and ItemDescription, and include SubCategory unless it already appears at the end of ItemDescription.",
   "ItemDescription should be a short identifying phrase (no brand repeat, avoid subcategory repeat unless needed).",
   "SubCategory must be the final selected category label.",
   "Use single spaces only. No punctuation or separators.",
   "Use title case for ItemDescription and SubCategory.",
   "Avoid adjacent duplicate words in ItemDescription or SubCategory.",
+  "If ItemDescription already ends with the SubCategory, remove it from ItemDescription instead of repeating it.",
 ];
 
 const gptTitleSchema = z.object({
@@ -165,14 +174,33 @@ export async function POST(request) {
       .filter(Boolean)
       .slice(0, MAX_ITEM_DESCRIPTION_WORDS)
       .join(" ");
-    const normalizedItemDescription = dedupeAdjacentWords(
+    const normalizedItemDescriptionBase = dedupeAdjacentWords(
       toTitleCase(shortItemDescription)
     );
+    let normalizedItemDescription = normalizedItemDescriptionBase;
+    let includeSubCategory = true;
+    if (endsWithWord(normalizedItemDescription, normalizedSubCategory)) {
+      if (
+        normalizedItemDescription.trim().toLowerCase() ===
+        normalizedSubCategory.toLowerCase()
+      ) {
+        includeSubCategory = false;
+      } else {
+        const subCategoryPattern = new RegExp(
+          `\\b${escapeRegExp(normalizedSubCategory)}$`,
+          "i"
+        );
+        normalizedItemDescription = normalizedItemDescription
+          .replace(subCategoryPattern, "")
+          .trim();
+      }
+    }
+
     const normalizedTitleOutput = dedupeAdjacentWords(
       normalizeTitle({
         brand: normalizedBrand,
         itemDescription: normalizedItemDescription,
-        subCategory: normalizedSubCategory,
+        subCategory: includeSubCategory ? normalizedSubCategory : "",
       })
     );
 

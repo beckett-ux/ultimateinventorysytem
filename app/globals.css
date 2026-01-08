@@ -187,14 +187,146 @@ textarea {
   color: transparent;
 }
 
-.quick-fill {
+.intake-layout.is-quick-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.quickModeRoot .quick-mode-card {
+  padding: 28px;
+}
+
+.quick-progress {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #94a3b8;
+  margin-bottom: 12px;
+}
+
+.quick-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.quickStep {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.quickStepCompleted {
+  opacity: 0.6;
+}
+
+.quickStepLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.quickHint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.quickModeRoot .quickStep > input,
+.quickModeRoot .quickStep > textarea,
+.quickModeRoot .quick-category input {
+  border-radius: 12px;
+  border: 1px solid #e1e4ec;
+  padding: 12px 14px;
+  font-size: 15px;
+  background: #fbfcff;
+  outline: none;
+  color: #101114;
+}
+
+.quickModeRoot .quickStep > textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.quickModeRoot .quickStep > input:focus,
+.quickModeRoot .quickStep > textarea:focus,
+.quickModeRoot .quick-category input:focus,
+.quickModeRoot .segmented:focus {
+  border-color: #4338ca;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.quick-category {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.quick-fill textarea {
-  min-height: 110px;
+.quickCategoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.quickCategoryOption {
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 10px 12px;
+  text-align: left;
+  background: #fff;
+  font-size: 14px;
+  color: #1f2937;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quickCategoryOption small {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.quickCategoryOption.is-active {
+  border-color: #111827;
+  background: #111827;
+  color: #fff;
+}
+
+.quickCategoryOption.is-active small {
+  color: #c7d2fe;
+}
+
+.quickCategoryEmpty {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.quickCondition {
+  gap: 10px;
+}
+
+.quickFooter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.quickReview {
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
 }
 
 .primary-button {
