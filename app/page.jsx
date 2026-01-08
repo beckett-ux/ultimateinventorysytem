@@ -546,9 +546,6 @@ export default function Home() {
                             </button>
                           )}
                           <div>
-                            <span className="category-label">
-                              Step {categoryStepIndex} of 3
-                            </span>
                             <strong>
                               {categoryStep === "gender"
                                 ? "Choose gender"
@@ -557,19 +554,6 @@ export default function Home() {
                                 : "Choose subcategory"}
                             </strong>
                           </div>
-                        </div>
-                        <div className="category-breadcrumb">
-                          <span>
-                            {categorySelection.gender || "Gender"}
-                          </span>
-                          <span>
-                            {categorySelection.category || "Category"}
-                          </span>
-                          <span>
-                            {categoryStep === "subcategory"
-                              ? "Subcategory"
-                              : "Next"}
-                          </span>
                         </div>
                       </div>
                       <div className="category-step-list">
