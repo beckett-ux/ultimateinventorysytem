@@ -114,6 +114,21 @@ textarea {
   font-size: 14px;
 }
 
+.quick-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.quick-mode-toggle label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
 .text-button {
   background: transparent;
   border: none;
@@ -170,6 +185,32 @@ textarea {
 
 .spotlight-ghost .ghost-typed {
   color: transparent;
+}
+
+.quick-fill {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quick-fill textarea {
+  min-height: 110px;
+}
+
+.primary-button {
+  align-self: flex-start;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: none;
+  background: #111827;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .hint {

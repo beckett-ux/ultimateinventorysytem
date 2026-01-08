@@ -186,6 +186,9 @@ export default function Home() {
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
+  const [quickMode, setQuickMode] = useState(false);
+  const [quickInput, setQuickInput] = useState("");
+  const [quickStatus, setQuickStatus] = useState("idle");
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [categoryStep, setCategoryStep] = useState("gender");
   const [categorySelection, setCategorySelection] = useState({
@@ -344,6 +347,13 @@ export default function Home() {
     }
     event.preventDefault();
 
+    if (quickMode && event.key === "Tab") {
+      if (brandSuggestion) {
+        setForm((prev) => ({ ...prev, brand: brandSuggestion }));
+      }
+      return;
+    }
+
     if (brandSuggestion) {
       setForm((prev) => ({ ...prev, brand: brandSuggestion }));
       setBrandLocked(true);
@@ -416,6 +426,43 @@ export default function Home() {
     setForm((prev) => ({ ...prev, [name]: formatCurrencyInput(value) }));
   };
 
+  const handleQuickAutofill = async () => {
+    if (!quickInput.trim()) {
+      return;
+    }
+
+    setQuickStatus("loading");
+    setError(null);
+
+    try {
+      const response = await fetch("/api/intake/parse", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rawInput: quickInput }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Quick autofill failed");
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          Object.entries(data).map(([key, value]) => [
+            key,
+            value?.trim() ? value : prev[key],
+          ])
+        ),
+      }));
+      setQuickStatus("success");
+    } catch {
+      setQuickStatus("error");
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setStatus("loading");
@@ -459,16 +506,27 @@ export default function Home() {
             <div className="section-heading">
               <div>
                 <h2>Start with brand</h2>
+                <p>Type to autocomplete. Enter locks the brand and moves on.</p>
               </div>
-              {brandLocked && (
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={handleBrandEdit}
-                >
-                  Edit
-                </button>
-              )}
+              <div className="quick-mode-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={quickMode}
+                    onChange={(event) => setQuickMode(event.target.checked)}
+                  />
+                  Quick mode
+                </label>
+                {brandLocked && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={handleBrandEdit}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             </div>
             <div className="spotlight-field">
               <div className="spotlight-ghost" aria-hidden="true">
@@ -486,6 +544,34 @@ export default function Home() {
                 readOnly={brandLocked}
               />
             </div>
+            {quickMode && (
+              <div className="quick-fill">
+                <label className="field">
+                  <span>Paste or type product info</span>
+                  <textarea
+                    value={quickInput}
+                    onChange={(event) => setQuickInput(event.target.value)}
+                    placeholder="Rick Owens, pony hair, Ramone, size 12, sneaker"
+                    rows={3}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleQuickAutofill}
+                  className="primary-button"
+                  disabled={!quickInput.trim() || quickStatus === "loading"}
+                >
+                  {quickStatus === "loading"
+                    ? "Autofilling..."
+                    : "Autofill with the information here"}
+                </button>
+                {quickStatus === "error" && (
+                  <span className="error">
+                    Unable to autofill. Try again.
+                  </span>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="intake-section">
