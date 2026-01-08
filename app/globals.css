@@ -188,7 +188,7 @@ textarea {
 }
 
 .intake-layout.is-quick-mode {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 320px;
 }
 
 .quickModeRoot .quick-mode-card {
@@ -219,6 +219,19 @@ textarea {
   background: #f9fafb;
 }
 
+.quickStepFieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.quickStepLocked {
+  opacity: 0.35;
+  filter: grayscale(0.15);
+  pointer-events: none;
+}
+
 .quickStepCompleted {
   opacity: 0.6;
 }
@@ -236,8 +249,8 @@ textarea {
   color: #6b7280;
 }
 
-.quickModeRoot .quickStep > input,
-.quickModeRoot .quickStep > textarea,
+.quickModeRoot .quickStep input,
+.quickModeRoot .quickStep textarea,
 .quickModeRoot .quick-category input {
   border-radius: 12px;
   border: 1px solid #e1e4ec;
@@ -248,13 +261,13 @@ textarea {
   color: #101114;
 }
 
-.quickModeRoot .quickStep > textarea {
+.quickModeRoot .quickStep textarea {
   min-height: 120px;
   resize: vertical;
 }
 
-.quickModeRoot .quickStep > input:focus,
-.quickModeRoot .quickStep > textarea:focus,
+.quickModeRoot .quickStep input:focus,
+.quickModeRoot .quickStep textarea:focus,
 .quickModeRoot .quick-category input:focus,
 .quickModeRoot .segmented:focus {
   border-color: #4338ca;
