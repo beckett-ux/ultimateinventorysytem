@@ -303,6 +303,35 @@ function ConditionControl({
   );
 }
 
+function BrandSpotlightInput({
+  value,
+  ghostRemainder,
+  inputRef,
+  onChange,
+  onKeyDown,
+  placeholder,
+  readOnly = false,
+}) {
+  return (
+    <div className="spotlight-field">
+      <div className="spotlight-ghost" aria-hidden="true">
+        <span className="ghost-typed">{value}</span>
+        <span>{ghostRemainder}</span>
+      </div>
+      <input
+        ref={inputRef}
+        name="brand"
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        autoComplete="off"
+        readOnly={readOnly}
+      />
+    </div>
+  );
+}
+
 function ShopifyPreview({
   preview,
   titlePreview,
@@ -372,7 +401,8 @@ export default function Home() {
   const [quickStatus, setQuickStatus] = useState("idle");
   const [quickError, setQuickError] = useState(null);
   const [quickItemDetails, setQuickItemDetails] = useState("");
-  const [quickParseError, setQuickParseError] = useState(null);
+  const [itemDetailsStatus, setItemDetailsStatus] = useState("idle");
+  const [itemDetailsMessage, setItemDetailsMessage] = useState("");
   const [quickCategoryQuery, setQuickCategoryQuery] = useState("");
   const [quickCategoryIndex, setQuickCategoryIndex] = useState(0);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -538,7 +568,8 @@ export default function Home() {
       setQuickStatus("idle");
       setQuickError(null);
       setQuickItemDetails("");
-      setQuickParseError(null);
+      setItemDetailsStatus("idle");
+      setItemDetailsMessage("");
       setQuickCategoryQuery("");
       setQuickCategoryIndex(0);
       setForm((prev) => ({
@@ -763,6 +794,15 @@ export default function Home() {
           }
           return;
         }
+        if (key === "condition") {
+          if (
+            isEmptyValue(prev.condition) ||
+            prev.condition === defaultForm.condition
+          ) {
+            next.condition = value;
+          }
+          return;
+        }
         if (isEmptyValue(prev[key])) {
           next[key] = value;
         }
@@ -773,7 +813,12 @@ export default function Home() {
 
   const handleQuickItemDetailsSubmit = async () => {
     const trimmedDetails = quickItemDetails.trim();
-    setQuickParseError(null);
+    setItemDetailsMessage("");
+    setItemDetailsStatus("idle");
+
+    if (itemDetailsStatus === "loading") {
+      return;
+    }
 
     if (!trimmedDetails) {
       if (isEmptyValue(form.itemName)) {
@@ -784,6 +829,8 @@ export default function Home() {
     }
 
     try {
+      setItemDetailsStatus("loading");
+      setItemDetailsMessage("AI autofilling from your notes...");
       const rawInput = `${form.brand}\n${trimmedDetails}`.trim();
       const response = await fetch("/api/intake/parse", {
         method: "POST",
@@ -796,16 +843,29 @@ export default function Home() {
       }
       const parsedFields = await response.json();
       mergeParsedFields(parsedFields);
+      if (parsedFields.categoryPath) {
+        setQuickCategoryQuery(parsedFields.categoryPath);
+        const matchIndex = quickCategoryOptions.findIndex(
+          (option) => option.path === parsedFields.categoryPath
+        );
+        if (matchIndex >= 0) {
+          setQuickCategoryIndex(matchIndex);
+        }
+      }
+      setItemDetailsStatus("success");
     } catch (parseError) {
-      setQuickParseError(
-        "Unable to parse item details. Added as item name."
-      );
+      setItemDetailsStatus("error");
+      setItemDetailsMessage("Couldn’t autofill. You can keep going.");
       setForm((prev) =>
         isEmptyValue(prev.itemName)
           ? { ...prev, itemName: trimmedDetails }
           : prev
       );
     } finally {
+      setTimeout(() => {
+        setItemDetailsStatus("idle");
+        setItemDetailsMessage("");
+      }, 800);
       handleQuickAdvance(2);
     }
   };
@@ -1031,31 +1091,24 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.brand ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[0] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Brand</label>
+                  <span className="quickStepLabel">Brand</span>
                   <fieldset
                     disabled={quickStepLocks.brand}
                     className="quickStepFieldset"
                   >
-                    <div className="spotlight-field">
-                      <div className="spotlight-ghost" aria-hidden="true">
-                        <span className="ghost-typed">{form.brand}</span>
-                        <span>{ghostRemainder}</span>
-                      </div>
-                      <input
-                        ref={brandInputRef}
-                        name="brand"
-                        value={form.brand}
-                        onChange={handleChange}
-                        onKeyDown={handleQuickBrandKeyDown}
-                        placeholder="Start typing a brand"
-                        autoComplete="off"
-                      />
-                    </div>
+                    <BrandSpotlightInput
+                      value={form.brand}
+                      ghostRemainder={ghostRemainder}
+                      inputRef={brandInputRef}
+                      onChange={handleChange}
+                      onKeyDown={handleQuickBrandKeyDown}
+                      placeholder="Start typing a brand"
+                    />
                   </fieldset>
                   <span className="quickHint">
                     Tab to autocomplete · Enter to continue
@@ -1065,12 +1118,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.itemDetails ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[1] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Item details</label>
+                  <span className="quickStepLabel">Item details</span>
                   <fieldset
                     disabled={quickStepLocks.itemDetails}
                     className="quickStepFieldset"
@@ -1082,26 +1135,38 @@ export default function Home() {
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          handleQuickItemDetailsSubmit();
+                          if (itemDetailsStatus !== "loading") {
+                            handleQuickItemDetailsSubmit();
+                          }
+                          return;
+                        }
+                        if (itemDetailsStatus === "loading") {
+                          event.preventDefault();
+                          return;
                         }
                       }}
+                      className="quickItemDetails"
+                      rows={6}
                       placeholder="Pony hair Ramones sneakers size 13 cost 100 sell 900 9/10"
                     />
                   </fieldset>
-                  {quickParseError && (
-                    <span className="error">{quickParseError}</span>
+                  {itemDetailsStatus === "loading" && (
+                    <span className="quickHint">{itemDetailsMessage}</span>
+                  )}
+                  {itemDetailsStatus === "error" && itemDetailsMessage && (
+                    <span className="error">{itemDetailsMessage}</span>
                   )}
                 </div>
 
                 <div
                   className={`quickStep ${
                     quickStepLocks.category ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[2] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Category</label>
+                  <span className="quickStepLabel">Category</span>
                   <fieldset
                     disabled={quickStepLocks.category}
                     className="quickStepFieldset"
@@ -1160,12 +1225,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.size ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[3] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Size</label>
+                  <span className="quickStepLabel">Size</span>
                   <fieldset
                     disabled={quickStepLocks.size}
                     className="quickStepFieldset"
@@ -1189,12 +1254,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.description ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[4] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Description</label>
+                  <span className="quickStepLabel">Description</span>
                   <fieldset
                     disabled={quickStepLocks.description}
                     className="quickStepFieldset"
@@ -1216,12 +1281,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.condition ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[5] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Condition</label>
+                  <span className="quickStepLabel">Condition</span>
                   <fieldset
                     disabled={quickStepLocks.condition}
                     className="quickStepFieldset"
@@ -1246,12 +1311,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.cost ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[6] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Intake cost</label>
+                  <span className="quickStepLabel">Intake cost</span>
                   <fieldset
                     disabled={quickStepLocks.cost}
                     className="quickStepFieldset"
@@ -1275,12 +1340,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.price ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[7] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Sell price</label>
+                  <span className="quickStepLabel">Sell price</span>
                   <fieldset
                     disabled={quickStepLocks.price}
                     className="quickStepFieldset"
@@ -1304,12 +1369,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.vendor ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[8] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Vendor</label>
+                  <span className="quickStepLabel">Vendor</span>
                   <fieldset
                     disabled={quickStepLocks.vendor}
                     className="quickStepFieldset"
@@ -1340,12 +1405,12 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.location ? "quickStepLocked" : ""
-                  }`}
+                  } field`}
                   ref={(el) => {
                     quickStepRefs.current[9] = el;
                   }}
                 >
-                  <label className="quickStepLabel">Location</label>
+                  <span className="quickStepLabel">Location</span>
                   <fieldset
                     disabled={quickStepLocks.location}
                     className="quickStepFieldset"
@@ -1382,12 +1447,12 @@ export default function Home() {
 
                 {quickStep >= 10 && (
                   <div
-                    className="quickStep"
+                    className="quickStep field"
                     ref={(el) => {
                       quickStepRefs.current[10] = el;
                     }}
                   >
-                    <label className="quickStepLabel">Save intake</label>
+                    <span className="quickStepLabel">Save intake</span>
                     <div className="quickFooter">
                       <button
                         ref={quickSaveRef}
@@ -1469,22 +1534,15 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-                <div className="spotlight-field">
-                  <div className="spotlight-ghost" aria-hidden="true">
-                    <span className="ghost-typed">{form.brand}</span>
-                    <span>{ghostRemainder}</span>
-                  </div>
-                  <input
-                    ref={brandInputRef}
-                    name="brand"
-                    value={form.brand}
-                    onChange={handleChange}
-                    onKeyDown={handleBrandKeyDown}
-                    placeholder="Start typing a brand"
-                    autoComplete="off"
-                    readOnly={brandLocked}
-                  />
-                </div>
+                <BrandSpotlightInput
+                  value={form.brand}
+                  ghostRemainder={ghostRemainder}
+                  inputRef={brandInputRef}
+                  onChange={handleChange}
+                  onKeyDown={handleBrandKeyDown}
+                  placeholder="Start typing a brand"
+                  readOnly={brandLocked}
+                />
               </section>
 
               <section className="intake-section">
