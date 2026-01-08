@@ -95,6 +95,25 @@ const fallbackVendorOptions = [
   "Consignment - Harper",
 ];
 
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const roundToHalf = (value) => Math.round(value * 2) / 2;
+
+const parseFirstNumber = (value) => {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (!value) {
+    return null;
+  }
+  const match = `${value}`.match(/(\d+(\.\d+)?)/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 const formatConditionValue = (value) => {
   const normalized = Number.parseFloat(value);
   if (Number.isNaN(normalized)) {
@@ -102,6 +121,71 @@ const formatConditionValue = (value) => {
   }
   const formatted = normalized.toFixed(1);
   return formatted.endsWith(".0") ? formatted.replace(".0", "") : formatted;
+};
+
+const normalizeConditionInput = (value) => {
+  const parsed = parseFirstNumber(value);
+  if (parsed === null) {
+    return "";
+  }
+  const rounded = roundToHalf(clamp(parsed, 0, 10));
+  return formatConditionValue(rounded);
+};
+
+const parseMoney = (value) => {
+  if (!value) {
+    return "";
+  }
+  const cleaned = `${value}`.replace(/[^0-9.]/g, "");
+  if (!cleaned) {
+    return "";
+  }
+  const [whole, ...rest] = cleaned.split(".");
+  const normalized = rest.length ? `${whole}.${rest.join("")}` : whole;
+  return normalized.replace(/^0+(?=\d)/, "");
+};
+
+const formatUSD = (value) => {
+  if (!value) {
+    return "";
+  }
+  return `$${value}`;
+};
+
+const dedupeAdjacentWords = (value) => {
+  if (!value) {
+    return "";
+  }
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const deduped = [];
+  for (const token of tokens) {
+    const last = deduped[deduped.length - 1];
+    if (last && last.toLowerCase() === token.toLowerCase()) {
+      continue;
+    }
+    deduped.push(token);
+  }
+  if (
+    deduped.length > 1 &&
+    deduped[deduped.length - 1].toLowerCase() ===
+      deduped[deduped.length - 2].toLowerCase()
+  ) {
+    deduped.pop();
+  }
+  return deduped.join(" ");
+};
+
+const getCategoryLeaf = (categoryPath) => {
+  const parts = parseCategoryPath(categoryPath || "");
+  return parts[parts.length - 1] || "";
+};
+
+const endsWithWord = (value, word) => {
+  if (!value || !word) {
+    return false;
+  }
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}$`, "i").test(value.trim());
 };
 
 const normalizeCategoryNode = (node) => {
@@ -187,7 +271,7 @@ export default function Home() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
   const [quickMode, setQuickMode] = useState(false);
-  const [quickInput, setQuickInput] = useState("");
+  const [spotlightText, setSpotlightText] = useState("");
   const [quickStatus, setQuickStatus] = useState("idle");
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [categoryStep, setCategoryStep] = useState("gender");
@@ -269,12 +353,17 @@ export default function Home() {
   }, [vendorSuggestion, form.vendorSource]);
 
   const titlePreview = useMemo(() => {
-    const categoryParts = parseCategoryPath(form.categoryPath);
-    const finalCategory = categoryParts[categoryParts.length - 1] || "";
-    const parts = [form.brand, form.itemName, finalCategory]
+    const categoryLeaf = getCategoryLeaf(form.categoryPath);
+    const baseParts = [form.brand, form.itemName]
       .map((value) => value.trim())
       .filter(Boolean);
-    return parts.length ? parts.join(" ") : "";
+    const baseTitle = baseParts.join(" ");
+    const shouldAppendCategory =
+      categoryLeaf && !endsWithWord(form.itemName, categoryLeaf);
+    const titleParts = shouldAppendCategory
+      ? [...baseParts, categoryLeaf]
+      : baseParts;
+    return dedupeAdjacentWords(titleParts.join(" "));
   }, [form.brand, form.itemName, form.categoryPath]);
 
   const descriptionPreview = useMemo(() => {
@@ -292,13 +381,22 @@ export default function Home() {
     );
   }, [form.location]);
 
-  const conditionProgress = useMemo(() => {
-    const value = Number.parseFloat(form.condition || "0");
-    if (Number.isNaN(value)) {
-      return 0;
-    }
-    return Math.min(100, Math.max(0, (value / 10) * 100));
+  const conditionNumber = useMemo(() => {
+    const normalized = normalizeConditionInput(form.condition);
+    const parsed = Number.parseFloat(normalized || "0");
+    return Number.isNaN(parsed) ? 0 : parsed;
   }, [form.condition]);
+
+  const conditionProgress = useMemo(() => {
+    return Math.min(100, Math.max(0, (conditionNumber / 10) * 100));
+  }, [conditionNumber]);
+
+  useEffect(() => {
+    if (quickMode) {
+      setBrandLocked(false);
+      setSpotlightText((prev) => (prev ? prev : form.brand));
+    }
+  }, [quickMode, form.brand]);
 
   useEffect(() => {
     const sheetId = process.env.NEXT_PUBLIC_VENDOR_SHEET_ID;
@@ -347,13 +445,6 @@ export default function Home() {
     }
     event.preventDefault();
 
-    if (quickMode && event.key === "Tab") {
-      if (brandSuggestion) {
-        setForm((prev) => ({ ...prev, brand: brandSuggestion }));
-      }
-      return;
-    }
-
     if (brandSuggestion) {
       setForm((prev) => ({ ...prev, brand: brandSuggestion }));
       setBrandLocked(true);
@@ -362,6 +453,31 @@ export default function Home() {
     }
 
     itemNameRef.current?.focus();
+  };
+
+  const handleSpotlightChange = (event) => {
+    const value = event.target.value;
+    setSpotlightText(value);
+    const firstLine = value.split("\n")[0] || "";
+    const trimmedBrand = firstLine.trim();
+    setForm((prev) => ({ ...prev, brand: trimmedBrand }));
+  };
+
+  const handleSpotlightKeyDown = (event) => {
+    if (event.key !== "Tab") {
+      return;
+    }
+    event.preventDefault();
+    if (!brandSuggestion) {
+      return;
+    }
+    setSpotlightText((prev) => {
+      const lines = prev.split("\n");
+      const rest = lines.slice(1).join("\n");
+      const next = rest ? `${brandSuggestion}\n${rest}` : brandSuggestion;
+      setForm((current) => ({ ...current, brand: brandSuggestion }));
+      return next;
+    });
   };
 
   const handleCategorySelect = ({ gender, category, subcategory }) => {
@@ -407,27 +523,17 @@ export default function Home() {
   };
 
   const handleConditionChange = (event) => {
-    const formatted = formatConditionValue(event.target.value);
+    const formatted = normalizeConditionInput(event.target.value);
     setForm((prev) => ({ ...prev, condition: formatted }));
-  };
-
-  const formatCurrencyInput = (value) => {
-    const cleaned = value.replace(/[^0-9.]/g, "");
-    if (!cleaned) {
-      return "";
-    }
-    const parts = cleaned.split(".");
-    const normalized = parts.length > 1 ? `${parts[0]}.${parts.slice(1).join("")}` : parts[0];
-    return `$${normalized}`;
   };
 
   const handleCurrencyChange = (event) => {
     const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: formatCurrencyInput(value) }));
+    setForm((prev) => ({ ...prev, [name]: parseMoney(value) }));
   };
 
   const handleQuickAutofill = async () => {
-    if (!quickInput.trim()) {
+    if (!spotlightText.trim()) {
       return;
     }
 
@@ -440,7 +546,7 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ rawInput: quickInput }),
+        body: JSON.stringify({ rawInput: spotlightText }),
       });
 
       const data = await response.json();
@@ -448,10 +554,18 @@ export default function Home() {
         throw new Error(data?.error || "Quick autofill failed");
       }
 
+      const normalized = {
+        ...data,
+        itemName: dedupeAdjacentWords(data.itemName?.trim()),
+        condition: normalizeConditionInput(data.condition),
+        cost: parseMoney(data.cost),
+        price: parseMoney(data.price),
+      };
+
       setForm((prev) => ({
         ...prev,
         ...Object.fromEntries(
-          Object.entries(data).map(([key, value]) => [
+          Object.entries(normalized).map(([key, value]) => [
             key,
             value?.trim() ? value : prev[key],
           ])
@@ -533,33 +647,38 @@ export default function Home() {
                 <span className="ghost-typed">{form.brand}</span>
                 <span>{ghostRemainder}</span>
               </div>
-              <input
-                ref={brandInputRef}
-                name="brand"
-                value={form.brand}
-                onChange={handleChange}
-                onKeyDown={handleBrandKeyDown}
-                placeholder="Start typing a brand"
-                autoComplete="off"
-                readOnly={brandLocked}
-              />
+              {quickMode ? (
+                <textarea
+                  ref={brandInputRef}
+                  name="spotlightText"
+                  value={spotlightText}
+                  onChange={handleSpotlightChange}
+                  onKeyDown={handleSpotlightKeyDown}
+                  placeholder={
+                    "Line 1: Brand (press Tab to autocomplete)\nLine 2+: Product info (size, category, condition, cost, price)"
+                  }
+                  rows={3}
+                />
+              ) : (
+                <input
+                  ref={brandInputRef}
+                  name="brand"
+                  value={form.brand}
+                  onChange={handleChange}
+                  onKeyDown={handleBrandKeyDown}
+                  placeholder="Start typing a brand"
+                  autoComplete="off"
+                  readOnly={brandLocked}
+                />
+              )}
             </div>
             {quickMode && (
               <div className="quick-fill">
-                <label className="field">
-                  <span>Paste or type product info</span>
-                  <textarea
-                    value={quickInput}
-                    onChange={(event) => setQuickInput(event.target.value)}
-                    placeholder="Rick Owens, pony hair, Ramone, size 12, sneaker"
-                    rows={3}
-                  />
-                </label>
                 <button
                   type="button"
                   onClick={handleQuickAutofill}
                   className="primary-button"
-                  disabled={!quickInput.trim() || quickStatus === "loading"}
+                  disabled={!spotlightText.trim() || quickStatus === "loading"}
                 >
                   {quickStatus === "loading"
                     ? "Autofilling..."
@@ -728,14 +847,14 @@ export default function Home() {
                 <span>Item condition</span>
                 <div className="condition-slider">
                   <span className="condition-value">
-                    Condition: {form.condition || "0"}/10
+                    Condition: {formatConditionValue(conditionNumber) || "0"}/10
                   </span>
                   <input
                     type="range"
                     min="0"
                     max="10"
                     step="0.5"
-                    value={form.condition || 0}
+                    value={conditionNumber}
                     onChange={handleConditionChange}
                     style={{
                       background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
@@ -764,7 +883,7 @@ export default function Home() {
                 <span>Intake cost</span>
                 <input
                   name="cost"
-                  value={form.cost}
+                  value={formatUSD(form.cost)}
                   onChange={handleCurrencyChange}
                   placeholder="$250"
                 />
@@ -773,7 +892,7 @@ export default function Home() {
                 <span>Sell price</span>
                 <input
                   name="price"
-                  value={form.price}
+                  value={formatUSD(form.price)}
                   onChange={handleCurrencyChange}
                   placeholder="$695"
                 />
@@ -840,10 +959,14 @@ export default function Home() {
             <div className="preview-header">
               <div>
                 <h3>{titlePreview || "Brand + Item Name"}</h3>
-                <span className="preview-price">{form.price || "$0.00"}</span>
+                <span className="preview-price">
+                  {formatUSD(form.price) || "$0.00"}
+                </span>
               </div>
               <span className="preview-condition">
-                {form.condition ? `${form.condition}/10` : "Condition --"}
+                {form.condition
+                  ? `${formatConditionValue(conditionNumber)}/10`
+                  : "Condition --"}
               </span>
             </div>
             <p className="preview-description">{descriptionPreview}</p>
@@ -866,7 +989,7 @@ export default function Home() {
               </div>
               <div>
                 <span>Cost</span>
-                <strong>{form.cost || "--"}</strong>
+                <strong>{formatUSD(form.cost) || "--"}</strong>
               </div>
             </div>
           </div>

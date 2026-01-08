@@ -15,6 +15,29 @@ const toTitleCase = (value) => {
     .join(" ");
 };
 
+const dedupeAdjacentWords = (value) => {
+  if (!value) {
+    return "";
+  }
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const deduped = [];
+  for (const token of tokens) {
+    const last = deduped[deduped.length - 1];
+    if (last && last.toLowerCase() === token.toLowerCase()) {
+      continue;
+    }
+    deduped.push(token);
+  }
+  if (
+    deduped.length > 1 &&
+    deduped[deduped.length - 1].toLowerCase() ===
+      deduped[deduped.length - 2].toLowerCase()
+  ) {
+    deduped.pop();
+  }
+  return deduped.join(" ");
+};
+
 const normalizeTitle = ({ brand, itemDescription, subCategory }) => {
   return [brand, itemDescription, subCategory]
     .map((value) => value.trim())
@@ -30,6 +53,7 @@ const titleFormatRules = [
   "SubCategory must be the final selected category label.",
   "Use single spaces only. No punctuation or separators.",
   "Use title case for ItemDescription and SubCategory.",
+  "Avoid adjacent duplicate words in ItemDescription or SubCategory.",
 ];
 
 const gptTitleSchema = z.object({
@@ -141,12 +165,16 @@ export async function POST(request) {
       .filter(Boolean)
       .slice(0, MAX_ITEM_DESCRIPTION_WORDS)
       .join(" ");
-    const normalizedItemDescription = toTitleCase(shortItemDescription);
-    const normalizedTitleOutput = normalizeTitle({
-      brand: normalizedBrand,
-      itemDescription: normalizedItemDescription,
-      subCategory: normalizedSubCategory,
-    });
+    const normalizedItemDescription = dedupeAdjacentWords(
+      toTitleCase(shortItemDescription)
+    );
+    const normalizedTitleOutput = dedupeAdjacentWords(
+      normalizeTitle({
+        brand: normalizedBrand,
+        itemDescription: normalizedItemDescription,
+        subCategory: normalizedSubCategory,
+      })
+    );
 
     const response = {
       title: normalizedTitleOutput,
