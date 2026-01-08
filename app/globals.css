@@ -47,20 +47,17 @@ textarea {
   gap: 24px;
 }
 
-.intake-kicker {
-  text-transform: uppercase;
-  letter-spacing: 0.24em;
-  font-size: 11px;
-  color: #80848c;
-}
-
 .intake-header h1 {
   font-size: 34px;
 }
 
-.intake-header p {
-  font-size: 16px;
-  max-width: 560px;
+.intake-subtitle {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: #80848c;
 }
 
 .intake-status {

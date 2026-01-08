@@ -448,8 +448,8 @@ export default function Home() {
     <main className="intake-shell">
       <header className="intake-header">
         <div>
-          <span className="intake-kicker">Inventory Intake</span>
-          <h1>Street Commerce</h1>
+          <h1>Inventory Intake</h1>
+          <span className="intake-subtitle">Street Commerce</span>
         </div>
       </header>
 
