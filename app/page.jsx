@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { approvedBrands } from "@/lib/approvedBrands";
 
@@ -14,7 +14,7 @@ const defaultForm = {
   cost: "",
   price: "",
   location: "dupont",
-  vendorSource: "Store Purchase",
+  vendorSource: "Street Commerce",
 };
 
 const categoryTree = [
@@ -87,7 +87,8 @@ const locationOptions = [
   { label: "Charlotte Store", value: "charlotte" },
 ];
 
-const vendorOptions = [
+const fallbackVendorOptions = [
+  "Street Commerce",
   "Store Purchase",
   "Consignment - Smith",
   "Consignment - Carter",
@@ -99,18 +100,82 @@ const conditionValues = Array.from({ length: 21 }, (_, index) => {
   return value.endsWith(".0") ? value.replace(".0", "") : value;
 });
 
-const flattenCategories = (nodes, parents = []) =>
-  nodes.flatMap((node) => {
-    const label = typeof node === "string" ? node : node.label;
-    const children = typeof node === "string" ? [] : node.children;
-    const nextParents = [...parents, label];
+const normalizeCategoryNode = (node) => {
+  if (typeof node === "string") {
+    return { label: node, children: [node] };
+  }
+  return {
+    label: node.label,
+    children: (node.children || []).map((child) =>
+      typeof child === "string"
+        ? { label: child, children: [child] }
+        : {
+            label: child.label,
+            children: child.children?.length ? child.children : [child.label],
+          }
+    ),
+  };
+};
 
-    if (!children || children.length === 0) {
-      return [{ label, path: nextParents.join(" › ") }];
+const parseCategoryPath = (path) =>
+  path
+    .split(/›|>/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+const buildCategoryPath = (parts) =>
+  parts.filter(Boolean).join(" > ");
+
+const parseCsv = (content) => {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (char === '"') {
+      if (inQuotes && content[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
     }
 
-    return flattenCategories(children, nextParents);
-  });
+    if (char === "," && !inQuotes) {
+      row.push(value);
+      value = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && content[index + 1] === "\n") {
+        index += 1;
+      }
+      row.push(value);
+      if (row.some((cell) => cell.trim())) {
+        rows.push(row);
+      }
+      row = [];
+      value = "";
+      continue;
+    }
+
+    value += char;
+  }
+
+  if (value || row.length) {
+    row.push(value);
+    if (row.some((cell) => cell.trim())) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
+};
 
 export default function Home() {
   const [form, setForm] = useState(defaultForm);
@@ -118,23 +183,40 @@ export default function Home() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [categorySearch, setCategorySearch] = useState("");
+  const [categorySelection, setCategorySelection] = useState({
+    gender: categoryTree[0]?.label || "",
+    category: "",
+  });
   const [brandLocked, setBrandLocked] = useState(false);
+  const [vendorOptions, setVendorOptions] = useState(fallbackVendorOptions);
 
   const itemNameRef = useRef(null);
   const brandInputRef = useRef(null);
+  const vendorInputRef = useRef(null);
 
-  const categoryOptions = useMemo(() => flattenCategories(categoryTree), []);
+  const normalizedCategories = useMemo(
+    () => categoryTree.map(normalizeCategoryNode),
+    []
+  );
 
-  const filteredCategories = useMemo(() => {
-    const query = categorySearch.trim().toLowerCase();
-    if (!query) {
-      return categoryOptions;
+  const selectedGender = useMemo(
+    () =>
+      normalizedCategories.find(
+        (gender) => gender.label === categorySelection.gender
+      ) || normalizedCategories[0],
+    [normalizedCategories, categorySelection.gender]
+  );
+
+  const selectedCategory = useMemo(() => {
+    if (!selectedGender) {
+      return null;
     }
-    return categoryOptions.filter((option) =>
-      option.path.toLowerCase().includes(query)
+    return (
+      selectedGender.children.find(
+        (category) => category.label === categorySelection.category
+      ) || selectedGender.children[0]
     );
-  }, [categoryOptions, categorySearch]);
+  }, [selectedGender, categorySelection.category]);
 
   const brandSuggestion = useMemo(() => {
     if (!form.brand) {
@@ -154,12 +236,82 @@ export default function Home() {
     return brandSuggestion.slice(form.brand.length);
   }, [brandSuggestion, form.brand]);
 
+  const vendorSuggestion = useMemo(() => {
+    if (!form.vendorSource) {
+      return "";
+    }
+    const normalized = form.vendorSource.toLowerCase();
+    return (
+      vendorOptions.find((vendor) =>
+        vendor.toLowerCase().startsWith(normalized)
+      ) || ""
+    );
+  }, [form.vendorSource, vendorOptions]);
+
+  const vendorGhostRemainder = useMemo(() => {
+    if (!vendorSuggestion) {
+      return "";
+    }
+    return vendorSuggestion.slice(form.vendorSource.length);
+  }, [vendorSuggestion, form.vendorSource]);
+
   const titlePreview = useMemo(() => {
     const parts = [form.brand, form.itemName]
       .map((value) => value.trim())
       .filter(Boolean);
     return parts.length ? parts.join(" ") : "";
   }, [form.brand, form.itemName]);
+
+  const descriptionPreview = useMemo(() => {
+    if (!form.shopifyDescription) {
+      return "Add a description to preview the Shopify listing.";
+    }
+    const trimmed = form.shopifyDescription.trim();
+    return trimmed.length > 160 ? `${trimmed.slice(0, 160)}…` : trimmed;
+  }, [form.shopifyDescription]);
+
+  const locationLabel = useMemo(() => {
+    return (
+      locationOptions.find((option) => option.value === form.location)?.label ||
+      form.location
+    );
+  }, [form.location]);
+
+  useEffect(() => {
+    const sheetId = process.env.NEXT_PUBLIC_VENDOR_SHEET_ID;
+    if (!sheetId) {
+      return;
+    }
+    const sheetName = process.env.NEXT_PUBLIC_VENDOR_SHEET_TAB || "Sheet1";
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
+      sheetName
+    )}`;
+
+    fetch(url)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to fetch vendor sheet");
+        }
+        return response.text();
+      })
+      .then((text) => {
+        const rows = parseCsv(text);
+        const vendors = rows
+          .flat()
+          .map((cell) => cell.trim())
+          .filter(Boolean);
+        if (vendors.length) {
+          const uniqueVendors = Array.from(new Set(vendors));
+          if (!uniqueVendors.includes(defaultForm.vendorSource)) {
+            uniqueVendors.unshift(defaultForm.vendorSource);
+          }
+          setVendorOptions(uniqueVendors);
+        }
+      })
+      .catch(() => {
+        setVendorOptions(fallbackVendorOptions);
+      });
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -182,8 +334,11 @@ export default function Home() {
     itemNameRef.current?.focus();
   };
 
-  const handleCategorySelect = (path) => {
-    setForm((prev) => ({ ...prev, categoryPath: path }));
+  const handleCategorySelect = ({ gender, category, subcategory }) => {
+    setForm((prev) => ({
+      ...prev,
+      categoryPath: buildCategoryPath([gender, category, subcategory]),
+    }));
     setCategoryOpen(false);
   };
 
@@ -191,6 +346,31 @@ export default function Home() {
     setBrandLocked(false);
     requestAnimationFrame(() => {
       brandInputRef.current?.focus();
+    });
+  };
+
+  const handleVendorKeyDown = (event) => {
+    if (event.key !== "Enter" && event.key !== "Tab") {
+      return;
+    }
+    event.preventDefault();
+
+    if (vendorSuggestion) {
+      setForm((prev) => ({ ...prev, vendorSource: vendorSuggestion }));
+    }
+  };
+
+  const handleCategoryOpen = () => {
+    setCategoryOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        const [gender, category] = parseCategoryPath(form.categoryPath);
+        setCategorySelection((current) => ({
+          gender: gender || current.gender || categoryTree[0]?.label || "",
+          category: category || current.category || "",
+        }));
+      }
+      return next;
     });
   };
 
@@ -300,33 +480,81 @@ export default function Home() {
               </label>
               <label className="field">
                 <span>Category</span>
-                <button
-                  type="button"
-                  className="dropdown-trigger"
-                  onClick={() => setCategoryOpen((prev) => !prev)}
-                >
-                  {form.categoryPath || "Choose a category"}
-                </button>
-                {categoryOpen && (
-                  <div className="dropdown-panel">
-                    <input
-                      value={categorySearch}
-                      onChange={(event) => setCategorySearch(event.target.value)}
-                      placeholder="Search categories"
-                    />
-                    <div className="dropdown-list">
-                      {filteredCategories.map((option) => (
-                        <button
-                          key={option.path}
-                          type="button"
-                          onClick={() => handleCategorySelect(option.path)}
-                        >
-                          <span>{option.path}</span>
-                        </button>
-                      ))}
+                <div className="category-picker">
+                  <button
+                    type="button"
+                    className="dropdown-trigger"
+                    onClick={handleCategoryOpen}
+                  >
+                    {form.categoryPath || "Choose a category"}
+                  </button>
+                  {categoryOpen && (
+                    <div className="dropdown-panel category-panel">
+                      <div className="category-column">
+                        <span className="category-label">Gender</span>
+                        {normalizedCategories.map((gender) => (
+                          <button
+                            key={gender.label}
+                            type="button"
+                            className={
+                              categorySelection.gender === gender.label
+                                ? "is-selected"
+                                : undefined
+                            }
+                            onClick={() =>
+                              setCategorySelection({
+                                gender: gender.label,
+                                category: "",
+                              })
+                            }
+                          >
+                            {gender.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="category-column">
+                        <span className="category-label">Category</span>
+                        {selectedGender?.children.map((category) => (
+                          <button
+                            key={category.label}
+                            type="button"
+                            className={
+                              categorySelection.category === category.label
+                                ? "is-selected"
+                                : undefined
+                            }
+                            onClick={() =>
+                              setCategorySelection((prev) => ({
+                                ...prev,
+                                category: category.label,
+                              }))
+                            }
+                          >
+                            {category.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="category-column">
+                        <span className="category-label">Subcategory</span>
+                        {selectedCategory?.children.map((subcategory) => (
+                          <button
+                            key={subcategory}
+                            type="button"
+                            onClick={() =>
+                              handleCategorySelect({
+                                gender: selectedGender?.label,
+                                category: selectedCategory?.label,
+                                subcategory,
+                              })
+                            }
+                          >
+                            {subcategory}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </label>
               <label className="field">
                 <span>Item size</span>
@@ -359,7 +587,7 @@ export default function Home() {
               </label>
               <div className="field condition-field">
                 <span>Item condition</span>
-                <div className="condition-values">
+                <div className="condition-scale">
                   {conditionValues.map((value) => (
                     <button
                       key={value}
@@ -374,27 +602,6 @@ export default function Home() {
                       {value}/10
                     </button>
                   ))}
-                </div>
-                <div className="condition-slider">
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    value={form.condition || "0"}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        condition: event.target.value,
-                      }))
-                    }
-                  />
-                  <input
-                    name="condition"
-                    value={form.condition}
-                    onChange={handleChange}
-                    placeholder="8.5"
-                  />
                 </div>
               </div>
             </div>
@@ -428,12 +635,28 @@ export default function Home() {
               </label>
               <label className="field">
                 <span>Consignee / Vendor</span>
-                <input
-                  name="vendorSource"
-                  value={form.vendorSource}
-                  onChange={handleChange}
-                  list="vendor-options"
-                />
+                <div className="spotlight-field compact">
+                  <div className="spotlight-ghost" aria-hidden="true">
+                    <span className="ghost-typed">{form.vendorSource}</span>
+                    <span>{vendorGhostRemainder}</span>
+                  </div>
+                  <input
+                    ref={vendorInputRef}
+                    name="vendorSource"
+                    value={form.vendorSource}
+                    onChange={handleChange}
+                    onKeyDown={handleVendorKeyDown}
+                    placeholder="Search vendors"
+                    autoComplete="off"
+                  />
+                </div>
+                {vendorSuggestion &&
+                  vendorSuggestion !== form.vendorSource &&
+                  form.vendorSource && (
+                    <span className="hint">
+                      Press Enter to accept {vendorSuggestion}.
+                    </span>
+                  )}
               </label>
             </div>
           </section>
@@ -475,31 +698,39 @@ export default function Home() {
         </form>
 
         <aside className="intake-summary">
-          <div className="summary-card">
-            <span className="summary-label">Live title</span>
-            <strong>{titlePreview || "Brand + Item Name"}</strong>
-            <div className="summary-row">
-              <span>Category</span>
-              <strong>{form.categoryPath || "Pick a category"}</strong>
+          <div className="summary-card product-preview">
+            <span className="summary-label">Shopify preview</span>
+            <div className="preview-header">
+              <div>
+                <h3>{titlePreview || "Brand + Item Name"}</h3>
+                <span className="preview-price">{form.price || "$0.00"}</span>
+              </div>
+              <span className="preview-condition">
+                {form.condition ? `${form.condition}/10` : "Condition --"}
+              </span>
             </div>
-            <div className="summary-row">
-              <span>Condition</span>
-              <strong>{form.condition ? `${form.condition}/10` : "--"}</strong>
-            </div>
-          </div>
-          <div className="summary-card">
-            <span className="summary-label">Pricing</span>
-            <div className="summary-row">
-              <span>Cost</span>
-              <strong>{form.cost || "--"}</strong>
-            </div>
-            <div className="summary-row">
-              <span>Sell price</span>
-              <strong>{form.price || "--"}</strong>
-            </div>
-            <div className="summary-row">
-              <span>Consignee</span>
-              <strong>{form.vendorSource || "--"}</strong>
+            <p className="preview-description">{descriptionPreview}</p>
+            <div className="preview-grid">
+              <div>
+                <span>Category</span>
+                <strong>{form.categoryPath || "Select a category"}</strong>
+              </div>
+              <div>
+                <span>Size</span>
+                <strong>{form.size || "--"}</strong>
+              </div>
+              <div>
+                <span>Vendor</span>
+                <strong>{form.vendorSource || "--"}</strong>
+              </div>
+              <div>
+                <span>Location</span>
+                <strong>{locationLabel || "--"}</strong>
+              </div>
+              <div>
+                <span>Cost</span>
+                <strong>{form.cost || "--"}</strong>
+              </div>
             </div>
           </div>
           {preview && (
@@ -510,12 +741,6 @@ export default function Home() {
           )}
         </aside>
       </div>
-
-      <datalist id="vendor-options">
-        {vendorOptions.map((vendor) => (
-          <option key={vendor} value={vendor} />
-        ))}
-      </datalist>
     </main>
   );
 }
