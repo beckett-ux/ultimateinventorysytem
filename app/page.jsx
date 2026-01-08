@@ -114,7 +114,7 @@ const parseFirstNumber = (value) => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
-const formatConditionValue = (value) => {
+const formatCondition = (value) => {
   const normalized = Number.parseFloat(value);
   if (Number.isNaN(normalized)) {
     return "";
@@ -129,7 +129,7 @@ const normalizeConditionInput = (value) => {
     return "";
   }
   const rounded = roundToHalf(clamp(parsed, 0, 10));
-  return formatConditionValue(rounded);
+  return formatCondition(rounded);
 };
 
 const parseMoney = (value) => {
@@ -271,8 +271,11 @@ export default function Home() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
   const [quickMode, setQuickMode] = useState(false);
-  const [spotlightText, setSpotlightText] = useState("");
+  const [quickStep, setQuickStep] = useState(0);
   const [quickStatus, setQuickStatus] = useState("idle");
+  const [quickError, setQuickError] = useState(null);
+  const [quickCategoryQuery, setQuickCategoryQuery] = useState("");
+  const [quickCategoryIndex, setQuickCategoryIndex] = useState(0);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [categoryStep, setCategoryStep] = useState("gender");
   const [categorySelection, setCategorySelection] = useState({
@@ -281,20 +284,46 @@ export default function Home() {
   });
   const [brandLocked, setBrandLocked] = useState(false);
   const [vendorOptions, setVendorOptions] = useState(fallbackVendorOptions);
+  const quickTotalSteps = 10;
 
   const itemNameRef = useRef(null);
   const brandInputRef = useRef(null);
   const vendorInputRef = useRef(null);
-
-  const categoryStepIndex = useMemo(
-    () => ({ gender: 1, category: 2, subcategory: 3 }[categoryStep] || 1),
-    [categoryStep]
-  );
+  const quickItemNameRef = useRef(null);
+  const quickCategoryRef = useRef(null);
+  const quickSizeRef = useRef(null);
+  const quickDescriptionRef = useRef(null);
+  const quickConditionRef = useRef(null);
+  const quickCostRef = useRef(null);
+  const quickPriceRef = useRef(null);
+  const quickVendorRef = useRef(null);
+  const quickLocationRef = useRef(null);
+  const quickSaveRef = useRef(null);
+  const quickStepRefs = useRef([]);
 
   const normalizedCategories = useMemo(
     () => categoryTree.map(normalizeCategoryNode),
     []
   );
+
+  const quickCategoryOptions = useMemo(() => {
+    const options = [];
+    normalizedCategories.forEach((gender) => {
+      gender.children.forEach((category) => {
+        category.children.forEach((subcategory) => {
+          options.push({
+            label: subcategory,
+            path: buildCategoryPath([
+              gender.label,
+              category.label,
+              subcategory,
+            ]),
+          });
+        });
+      });
+    });
+    return options;
+  }, [normalizedCategories]);
 
   const selectedGender = useMemo(
     () =>
@@ -352,6 +381,18 @@ export default function Home() {
     return vendorSuggestion.slice(form.vendorSource.length);
   }, [vendorSuggestion, form.vendorSource]);
 
+  const filteredQuickCategories = useMemo(() => {
+    const query = quickCategoryQuery.trim().toLowerCase();
+    if (!query) {
+      return quickCategoryOptions;
+    }
+    return quickCategoryOptions.filter((option) => {
+      const label = option.label.toLowerCase();
+      const path = option.path.toLowerCase();
+      return label.includes(query) || path.includes(query);
+    });
+  }, [quickCategoryQuery, quickCategoryOptions]);
+
   const titlePreview = useMemo(() => {
     const categoryLeaf = getCategoryLeaf(form.categoryPath);
     const baseParts = [form.brand, form.itemName]
@@ -394,9 +435,47 @@ export default function Home() {
   useEffect(() => {
     if (quickMode) {
       setBrandLocked(false);
-      setSpotlightText((prev) => (prev ? prev : form.brand));
+      setQuickStep(0);
+      setQuickStatus("idle");
+      setQuickError(null);
+      setQuickCategoryQuery("");
+      setQuickCategoryIndex(0);
+      setForm((prev) => ({
+        ...prev,
+        vendorSource: defaultForm.vendorSource,
+      }));
+      requestAnimationFrame(() => {
+        brandInputRef.current?.focus();
+      });
     }
-  }, [quickMode, form.brand]);
+  }, [quickMode]);
+
+  useEffect(() => {
+    if (!quickMode) {
+      return;
+    }
+    const stepElement = quickStepRefs.current[quickStep];
+    if (stepElement) {
+      stepElement.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    focusQuickStep(quickStep);
+  }, [quickMode, quickStep]);
+
+  useEffect(() => {
+    const normalized = normalizeConditionInput(form.condition);
+    if (normalized !== form.condition) {
+      setForm((prev) => ({ ...prev, condition: normalized }));
+    }
+  }, [form.condition]);
+
+  useEffect(() => {
+    if (!filteredQuickCategories.length) {
+      return;
+    }
+    setQuickCategoryIndex((prev) =>
+      prev >= filteredQuickCategories.length ? 0 : prev
+    );
+  }, [filteredQuickCategories]);
 
   useEffect(() => {
     const sheetId = process.env.NEXT_PUBLIC_VENDOR_SHEET_ID;
@@ -434,6 +513,26 @@ export default function Home() {
       });
   }, []);
 
+  const focusQuickStep = (step) => {
+    const focusMap = {
+      0: brandInputRef,
+      1: quickItemNameRef,
+      2: quickCategoryRef,
+      3: quickSizeRef,
+      4: quickDescriptionRef,
+      5: quickConditionRef,
+      6: quickCostRef,
+      7: quickPriceRef,
+      8: quickVendorRef,
+      9: quickLocationRef,
+      10: quickSaveRef,
+    };
+    const targetRef = focusMap[step];
+    if (targetRef?.current) {
+      targetRef.current.focus();
+    }
+  };
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -455,29 +554,115 @@ export default function Home() {
     itemNameRef.current?.focus();
   };
 
-  const handleSpotlightChange = (event) => {
-    const value = event.target.value;
-    setSpotlightText(value);
-    const firstLine = value.split("\n")[0] || "";
-    const trimmedBrand = firstLine.trim();
-    setForm((prev) => ({ ...prev, brand: trimmedBrand }));
+  const handleQuickAdvance = (nextStep) => {
+    setQuickStep((prev) =>
+      typeof nextStep === "number"
+        ? nextStep
+        : Math.min(prev + 1, quickTotalSteps)
+    );
   };
 
-  const handleSpotlightKeyDown = (event) => {
-    if (event.key !== "Tab") {
+  const handleQuickBrandKeyDown = (event) => {
+    if (event.key !== "Enter" && event.key !== "Tab") {
       return;
     }
+
+    if (event.key === "Tab") {
+      if (brandSuggestion) {
+        event.preventDefault();
+        setForm((prev) => ({ ...prev, brand: brandSuggestion }));
+      }
+      return;
+    }
+
     event.preventDefault();
-    if (!brandSuggestion) {
+    if (brandSuggestion) {
+      setForm((prev) => ({ ...prev, brand: brandSuggestion }));
+    } else if (form.brand.trim()) {
+      setForm((prev) => ({ ...prev, brand: form.brand.trim() }));
+    } else {
       return;
     }
-    setSpotlightText((prev) => {
-      const lines = prev.split("\n");
-      const rest = lines.slice(1).join("\n");
-      const next = rest ? `${brandSuggestion}\n${rest}` : brandSuggestion;
-      setForm((current) => ({ ...current, brand: brandSuggestion }));
-      return next;
-    });
+    handleQuickAdvance(1);
+  };
+
+  const handleQuickCategoryKeyDown = (event) => {
+    if (event.key === "ArrowDown") {
+      if (!filteredQuickCategories.length) {
+        return;
+      }
+      event.preventDefault();
+      setQuickCategoryIndex((prev) =>
+        Math.min(prev + 1, filteredQuickCategories.length - 1)
+      );
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      if (!filteredQuickCategories.length) {
+        return;
+      }
+      event.preventDefault();
+      setQuickCategoryIndex((prev) => Math.max(prev - 1, 0));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const selected = filteredQuickCategories[quickCategoryIndex];
+      if (selected) {
+        setForm((prev) => ({ ...prev, categoryPath: selected.path }));
+      }
+      if (selected || form.categoryPath) {
+        handleQuickAdvance(3);
+      }
+    }
+  };
+
+  const handleQuickDescriptionKeyDown = (event) => {
+    if (
+      event.key === "Enter" &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      handleQuickAdvance(5);
+    }
+  };
+
+  const handleQuickVendorKeyDown = (event) => {
+    if (event.key !== "Enter" && event.key !== "Tab") {
+      return;
+    }
+
+    if (event.key === "Tab") {
+      if (vendorSuggestion) {
+        event.preventDefault();
+        setForm((prev) => ({ ...prev, vendorSource: vendorSuggestion }));
+      }
+      return;
+    }
+
+    event.preventDefault();
+    if (vendorSuggestion) {
+      setForm((prev) => ({ ...prev, vendorSource: vendorSuggestion }));
+    }
+    handleQuickAdvance(9);
+  };
+
+  const handleQuickLocationKeyDown = (event) => {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      setForm((prev) => ({ ...prev, location: "charlotte" }));
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setForm((prev) => ({ ...prev, location: "dupont" }));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleQuickAdvance(10);
+    }
   };
 
   const handleCategorySelect = ({ gender, category, subcategory }) => {
@@ -487,6 +672,10 @@ export default function Home() {
     }));
     setCategoryOpen(false);
     setCategoryStep("gender");
+  };
+
+  const handleQuickCategorySelect = (option) => {
+    setForm((prev) => ({ ...prev, categoryPath: option.path }));
   };
 
   const handleBrandEdit = () => {
@@ -532,49 +721,25 @@ export default function Home() {
     setForm((prev) => ({ ...prev, [name]: parseMoney(value) }));
   };
 
-  const handleQuickAutofill = async () => {
-    if (!spotlightText.trim()) {
-      return;
+  const validateIntake = async () => {
+    const response = await fetch("/api/intake/validate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(form),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      const submitError = new Error(
+        data?.error || "Unable to validate intake payload"
+      );
+      submitError.details = data?.details;
+      throw submitError;
     }
 
-    setQuickStatus("loading");
-    setError(null);
-
-    try {
-      const response = await fetch("/api/intake/parse", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ rawInput: spotlightText }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || "Quick autofill failed");
-      }
-
-      const normalized = {
-        ...data,
-        itemName: dedupeAdjacentWords(data.itemName?.trim()),
-        condition: normalizeConditionInput(data.condition),
-        cost: parseMoney(data.cost),
-        price: parseMoney(data.price),
-      };
-
-      setForm((prev) => ({
-        ...prev,
-        ...Object.fromEntries(
-          Object.entries(normalized).map(([key, value]) => [
-            key,
-            value?.trim() ? value : prev[key],
-          ])
-        ),
-      }));
-      setQuickStatus("success");
-    } catch {
-      setQuickStatus("error");
-    }
+    return data;
   };
 
   const handleSubmit = async (event) => {
@@ -584,19 +749,7 @@ export default function Home() {
     setPreview(null);
 
     try {
-      const response = await fetch("/api/intake/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(form),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || "Unable to validate intake payload");
-      }
-
+      const data = await validateIntake();
       setPreview(data);
       setStatus("success");
     } catch (submitError) {
@@ -604,6 +757,41 @@ export default function Home() {
       setError(submitError.message);
     }
   };
+
+  const handleQuickSave = async () => {
+    setQuickStatus("loading");
+    setQuickError(null);
+    setPreview(null);
+
+    try {
+      const data = await validateIntake();
+      setPreview(data);
+      setQuickStatus("success");
+    } catch (submitError) {
+      setQuickStatus("error");
+      setQuickError(submitError.message);
+      const field = submitError.details?.[0]?.path?.[0];
+      const stepMap = {
+        brand: 0,
+        itemName: 1,
+        categoryPath: 2,
+        size: 3,
+        shopifyDescription: 4,
+        condition: 5,
+        cost: 6,
+        price: 7,
+        vendorSource: 8,
+        location: 9,
+      };
+      if (field && Object.prototype.hasOwnProperty.call(stepMap, field)) {
+        setQuickStep(stepMap[field]);
+      }
+    }
+  };
+
+  const quickProgressStep = Math.min(quickStep + 1, quickTotalSteps);
+  const quickActiveCategory =
+    filteredQuickCategories[quickCategoryIndex] || null;
 
   return (
     <main className="intake-shell">
@@ -614,392 +802,789 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="intake-layout">
-        <form onSubmit={handleSubmit} className="intake-form">
-          <section className="intake-section spotlight-section">
-            <div className="section-heading">
-              <div>
-                <h2>Start with brand</h2>
-                <p>Type to autocomplete. Enter locks the brand and moves on.</p>
+      <div className={`intake-layout ${quickMode ? "is-quick-mode" : ""}`}>
+        <form
+          onSubmit={handleSubmit}
+          className={`intake-form ${quickMode ? "quickModeRoot" : ""}`}
+        >
+          {quickMode ? (
+            <section className="intake-section quick-mode-card">
+              <div className="section-heading">
+                <div>
+                  <h2>Start with brand</h2>
+                  <p>
+                    Tab autocompletes. Enter confirms and advances through each
+                    step.
+                  </p>
+                </div>
+                <div className="quick-mode-toggle">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={quickMode}
+                      onChange={(event) => setQuickMode(event.target.checked)}
+                    />
+                    Quick mode
+                  </label>
+                </div>
               </div>
-              <div className="quick-mode-toggle">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={quickMode}
-                    onChange={(event) => setQuickMode(event.target.checked)}
-                  />
-                  Quick mode
-                </label>
-                {brandLocked && (
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={handleBrandEdit}
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="spotlight-field">
-              <div className="spotlight-ghost" aria-hidden="true">
-                <span className="ghost-typed">{form.brand}</span>
-                <span>{ghostRemainder}</span>
-              </div>
-              {quickMode ? (
-                <textarea
-                  ref={brandInputRef}
-                  name="spotlightText"
-                  value={spotlightText}
-                  onChange={handleSpotlightChange}
-                  onKeyDown={handleSpotlightKeyDown}
-                  placeholder={
-                    "Line 1: Brand (press Tab to autocomplete)\nLine 2+: Product info (size, category, condition, cost, price)"
-                  }
-                  rows={3}
-                />
-              ) : (
-                <input
-                  ref={brandInputRef}
-                  name="brand"
-                  value={form.brand}
-                  onChange={handleChange}
-                  onKeyDown={handleBrandKeyDown}
-                  placeholder="Start typing a brand"
-                  autoComplete="off"
-                  readOnly={brandLocked}
-                />
-              )}
-            </div>
-            {quickMode && (
-              <div className="quick-fill">
-                <button
-                  type="button"
-                  onClick={handleQuickAutofill}
-                  className="primary-button"
-                  disabled={!spotlightText.trim() || quickStatus === "loading"}
-                >
-                  {quickStatus === "loading"
-                    ? "Autofilling..."
-                    : "Autofill with the information here"}
-                </button>
-                {quickStatus === "error" && (
-                  <span className="error">
-                    Unable to autofill. Try again.
-                  </span>
-                )}
-              </div>
-            )}
-          </section>
 
-          <section className="intake-section">
-            <div className="section-heading">
-              <div>
-                <h2>Core identity</h2>
+              <div className="quick-progress">
+                Step {quickProgressStep} of {quickTotalSteps}
               </div>
-            </div>
-            <div className="field-grid three">
-              <label className="field">
-                <span>Item name</span>
-                <input
-                  ref={itemNameRef}
-                  name="itemName"
-                  value={form.itemName}
-                  onChange={handleChange}
-                  placeholder="Pony Hair Ramones"
-                />
-              </label>
-              <label className="field">
-                <span>Category</span>
-                <div className="category-picker">
-                  <button
-                    type="button"
-                    className="dropdown-trigger"
-                    onClick={handleCategoryOpen}
+
+              <div className="quick-steps">
+                {quickStep >= 0 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 0 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[0] = el;
+                    }}
                   >
-                    {form.categoryPath || "Choose a category"}
-                  </button>
-                  {categoryOpen && (
-                    <div className="dropdown-panel category-panel">
-                      <div className="category-step-header">
-                        <div className="category-step-meta">
-                          {categoryStep !== "gender" && (
-                            <button
-                              type="button"
-                              className="category-back"
-                              onClick={() =>
-                                setCategoryStep((prev) =>
-                                  prev === "subcategory" ? "category" : "gender"
-                                )
-                              }
-                            >
-                              Back
-                            </button>
-                          )}
-                          <div>
-                            <strong>
-                              {categoryStep === "gender"
-                                ? "Choose gender"
-                                : categoryStep === "category"
-                                ? "Choose category"
-                                : "Choose subcategory"}
-                            </strong>
-                          </div>
-                        </div>
+                    <label className="quickStepLabel">Brand</label>
+                    <div className="spotlight-field">
+                      <div className="spotlight-ghost" aria-hidden="true">
+                        <span className="ghost-typed">{form.brand}</span>
+                        <span>{ghostRemainder}</span>
                       </div>
-                      <div className="category-step-list">
-                        {categoryStep === "gender" &&
-                          normalizedCategories.map((gender) => (
+                      <input
+                        ref={brandInputRef}
+                        name="brand"
+                        value={form.brand}
+                        onChange={handleChange}
+                        onKeyDown={handleQuickBrandKeyDown}
+                        placeholder="Start typing a brand"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <span className="quickHint">
+                      Tab to autocomplete · Enter to continue
+                    </span>
+                  </div>
+                )}
+
+                {quickStep >= 1 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 1 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[1] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">Item name</label>
+                    <input
+                      ref={quickItemNameRef}
+                      name="itemName"
+                      value={form.itemName}
+                      onChange={handleChange}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleQuickAdvance(2);
+                        }
+                      }}
+                      placeholder="Pony Hair Ramones"
+                    />
+                  </div>
+                )}
+
+                {quickStep >= 2 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 2 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[2] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">Category</label>
+                    <div className="quick-category">
+                      <input
+                        ref={quickCategoryRef}
+                        value={quickCategoryQuery}
+                        onChange={(event) => {
+                          setQuickCategoryQuery(event.target.value);
+                          setQuickCategoryIndex(0);
+                        }}
+                        onKeyDown={handleQuickCategoryKeyDown}
+                        placeholder="Search categories"
+                      />
+                      <div className="quickCategoryList" role="listbox">
+                        {filteredQuickCategories.length ? (
+                          filteredQuickCategories.map((option, index) => (
                             <button
-                              key={gender.label}
+                              key={option.path}
                               type="button"
                               className={
-                                categorySelection.gender === gender.label
-                                  ? "is-selected"
-                                  : undefined
+                                index === quickCategoryIndex
+                                  ? "quickCategoryOption is-active"
+                                  : "quickCategoryOption"
                               }
-                              onClick={(event) => {
-                                event.preventDefault();
-                                setCategorySelection({
-                                  gender: gender.label,
-                                  category: "",
-                                });
-                                setCategoryStep("category");
+                              onClick={() => {
+                                handleQuickCategorySelect(option);
+                                handleQuickAdvance(3);
                               }}
                             >
-                              {gender.label}
+                              <span>{option.label}</span>
+                              <small>{option.path}</small>
                             </button>
-                          ))}
-                        {categoryStep === "category" &&
-                          selectedGender?.children.map((category) => (
-                            <button
-                              key={category.label}
-                              type="button"
-                              className={
-                                categorySelection.category === category.label
-                                  ? "is-selected"
-                                  : undefined
-                              }
-                              onClick={(event) => {
-                                event.preventDefault();
-                                setCategorySelection((prev) => ({
-                                  ...prev,
-                                  category: category.label,
-                                }));
-                                setCategoryStep("subcategory");
-                              }}
-                            >
-                              {category.label}
-                            </button>
-                          ))}
-                        {categoryStep === "subcategory" &&
-                          selectedCategory?.children.map((subcategory) => (
-                            <button
-                              key={subcategory}
-                              type="button"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                handleCategorySelect({
-                                  gender: selectedGender?.label,
-                                  category: selectedCategory?.label,
-                                  subcategory,
-                                });
-                              }}
-                            >
-                              {subcategory}
-                            </button>
-                          ))}
+                          ))
+                        ) : (
+                          <div className="quickCategoryEmpty">
+                            No matches. Keep typing.
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
-              </label>
-              <label className="field">
-                <span>Item size</span>
-                <input
-                  name="size"
-                  value={form.size}
-                  onChange={handleChange}
-                  placeholder="IT 40"
-                />
-              </label>
-            </div>
-          </section>
+                    {form.categoryPath && (
+                      <span className="quickHint">
+                        Selected: {form.categoryPath}
+                      </span>
+                    )}
+                    {quickActiveCategory && (
+                      <span className="quickHint">
+                        Enter to select {quickActiveCategory.label}
+                      </span>
+                    )}
+                  </div>
+                )}
 
-          <section className="intake-section">
-            <div className="section-heading">
-              <div>
-                <h2>Product details</h2>
-              </div>
-            </div>
-            <div className="field-grid single">
-              <label className="field">
-                <span>Shopify description</span>
-                <textarea
-                  name="shopifyDescription"
-                  value={form.shopifyDescription}
-                  onChange={handleChange}
-                  placeholder="Short description for the listing."
-                />
-              </label>
-              <div className="field condition-field">
-                <span>Item condition</span>
-                <div className="condition-slider">
-                  <span className="condition-value">
-                    Condition: {formatConditionValue(conditionNumber) || "0"}/10
-                  </span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    value={conditionNumber}
-                    onChange={handleConditionChange}
-                    style={{
-                      background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
+                {quickStep >= 3 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 3 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[3] = el;
                     }}
-                  />
-                  <div className="condition-scale">
-                    <span>0</span>
-                    <span>2.5</span>
-                    <span>5</span>
-                    <span>7.5</span>
-                    <span>10</span>
+                  >
+                    <label className="quickStepLabel">Size</label>
+                    <input
+                      ref={quickSizeRef}
+                      name="size"
+                      value={form.size}
+                      onChange={handleChange}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleQuickAdvance(4);
+                        }
+                      }}
+                      placeholder="IT 40"
+                    />
+                  </div>
+                )}
+
+                {quickStep >= 4 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 4 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[4] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">
+                      Shopify description
+                    </label>
+                    <textarea
+                      ref={quickDescriptionRef}
+                      name="shopifyDescription"
+                      value={form.shopifyDescription}
+                      onChange={handleChange}
+                      onKeyDown={handleQuickDescriptionKeyDown}
+                      placeholder="Short description for the listing."
+                    />
+                    <span className="quickHint">Ctrl+Enter to continue</span>
+                  </div>
+                )}
+
+                {quickStep >= 5 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 5 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[5] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">Condition</label>
+                    <div className="condition-slider quickCondition">
+                      <span className="condition-value">
+                        Condition: {formatCondition(conditionNumber) || "0"}/10
+                      </span>
+                      <input
+                        ref={quickConditionRef}
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={Number(form.condition || 0)}
+                        onChange={handleConditionChange}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            handleQuickAdvance(6);
+                          }
+                        }}
+                        style={{
+                          background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {quickStep >= 6 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 6 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[6] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">Intake cost</label>
+                    <input
+                      ref={quickCostRef}
+                      name="cost"
+                      value={formatUSD(form.cost)}
+                      onChange={handleCurrencyChange}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleQuickAdvance(7);
+                        }
+                      }}
+                      placeholder="$250"
+                    />
+                  </div>
+                )}
+
+                {quickStep >= 7 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 7 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[7] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">Sell price</label>
+                    <input
+                      ref={quickPriceRef}
+                      name="price"
+                      value={formatUSD(form.price)}
+                      onChange={handleCurrencyChange}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleQuickAdvance(8);
+                        }
+                      }}
+                      placeholder="$695"
+                    />
+                  </div>
+                )}
+
+                {quickStep >= 8 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 8 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[8] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">
+                      Consignee / Vendor
+                    </label>
+                    <div className="spotlight-field compact">
+                      <div className="spotlight-ghost" aria-hidden="true">
+                        <span className="ghost-typed">
+                          {form.vendorSource}
+                        </span>
+                        <span>{vendorGhostRemainder}</span>
+                      </div>
+                      <input
+                        ref={quickVendorRef}
+                        name="vendorSource"
+                        value={form.vendorSource}
+                        onChange={handleChange}
+                        onKeyDown={handleQuickVendorKeyDown}
+                        placeholder="Search vendors"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <span className="quickHint">
+                      Tab to autocomplete · Enter to continue
+                    </span>
+                  </div>
+                )}
+
+                {quickStep >= 9 && (
+                  <div
+                    className={`quickStep ${
+                      quickStep > 9 ? "quickStepCompleted" : ""
+                    }`}
+                    ref={(el) => {
+                      quickStepRefs.current[9] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">Location</label>
+                    <div
+                      className="segmented"
+                      ref={quickLocationRef}
+                      tabIndex={0}
+                      onKeyDown={handleQuickLocationKeyDown}
+                    >
+                      {locationOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={
+                            form.location === option.value
+                              ? "is-selected"
+                              : undefined
+                          }
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              location: option.value,
+                            }))
+                          }
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="quickHint">Enter to save</span>
+                  </div>
+                )}
+
+                {quickStep >= 10 && (
+                  <div
+                    className="quickStep"
+                    ref={(el) => {
+                      quickStepRefs.current[10] = el;
+                    }}
+                  >
+                    <label className="quickStepLabel">Save intake</label>
+                    <div className="quickFooter">
+                      <button
+                        ref={quickSaveRef}
+                        type="button"
+                        className="primary-button"
+                        onClick={handleQuickSave}
+                        disabled={quickStatus === "loading"}
+                      >
+                        {quickStatus === "loading"
+                          ? "Saving..."
+                          : "Save intake"}
+                      </button>
+                      {quickStatus === "success" && (
+                        <span className="success">Saved & validated</span>
+                      )}
+                    </div>
+                    {quickStatus === "error" && quickError && (
+                      <span className="error">{quickError}</span>
+                    )}
+                  </div>
+                )}
+
+                {preview && (
+                  <div className="quickReview">
+                    <span className="summary-label">Review</span>
+                    <div className="summary-row">
+                      <span>Title</span>
+                      <strong>{preview.title}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Price</span>
+                      <strong>{formatUSD(preview.pricing.price)}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Category</span>
+                      <strong>{preview.categoryPath}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Size</span>
+                      <strong>{form.size || "--"}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Tags</span>
+                      <strong>{preview.tags.join(", ")}</strong>
+                    </div>
+                    <details className="summary-code">
+                      <summary>View normalized payload</summary>
+                      <pre>{JSON.stringify(preview, null, 2)}</pre>
+                    </details>
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : (
+            <>
+              <section className="intake-section spotlight-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>Start with brand</h2>
+                    <p>Type to autocomplete. Enter locks the brand and moves on.</p>
+                  </div>
+                  <div className="quick-mode-toggle">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={quickMode}
+                        onChange={(event) => setQuickMode(event.target.checked)}
+                      />
+                      Quick mode
+                    </label>
+                    {brandLocked && (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={handleBrandEdit}
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="intake-section">
-            <div className="section-heading">
-              <div>
-                <h2>Pricing & ownership</h2>
-              </div>
-            </div>
-            <div className="field-grid three">
-              <label className="field">
-                <span>Intake cost</span>
-                <input
-                  name="cost"
-                  value={formatUSD(form.cost)}
-                  onChange={handleCurrencyChange}
-                  placeholder="$250"
-                />
-              </label>
-              <label className="field">
-                <span>Sell price</span>
-                <input
-                  name="price"
-                  value={formatUSD(form.price)}
-                  onChange={handleCurrencyChange}
-                  placeholder="$695"
-                />
-              </label>
-              <label className="field">
-                <span>Consignee / Vendor</span>
-                <div className="spotlight-field compact">
+                <div className="spotlight-field">
                   <div className="spotlight-ghost" aria-hidden="true">
-                    <span className="ghost-typed">{form.vendorSource}</span>
-                    <span>{vendorGhostRemainder}</span>
+                    <span className="ghost-typed">{form.brand}</span>
+                    <span>{ghostRemainder}</span>
                   </div>
                   <input
-                    ref={vendorInputRef}
-                    name="vendorSource"
-                    value={form.vendorSource}
+                    ref={brandInputRef}
+                    name="brand"
+                    value={form.brand}
                     onChange={handleChange}
-                    onKeyDown={handleVendorKeyDown}
-                    placeholder="Search vendors"
+                    onKeyDown={handleBrandKeyDown}
+                    placeholder="Start typing a brand"
                     autoComplete="off"
+                    readOnly={brandLocked}
                   />
                 </div>
-              </label>
-            </div>
-          </section>
+              </section>
 
-          <section className="intake-section">
-            <div className="section-heading">
-              <div>
-                <h2>Location</h2>
-              </div>
-            </div>
-            <div className="segmented">
-              {locationOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={
-                    form.location === option.value ? "is-selected" : undefined
-                  }
-                  onClick={() =>
-                    setForm((prev) => ({ ...prev, location: option.value }))
-                  }
-                >
-                  {option.label}
+              <section className="intake-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>Core identity</h2>
+                  </div>
+                </div>
+                <div className="field-grid three">
+                  <label className="field">
+                    <span>Item name</span>
+                    <input
+                      ref={itemNameRef}
+                      name="itemName"
+                      value={form.itemName}
+                      onChange={handleChange}
+                      placeholder="Pony Hair Ramones"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Category</span>
+                    <div className="category-picker">
+                      <button
+                        type="button"
+                        className="dropdown-trigger"
+                        onClick={handleCategoryOpen}
+                      >
+                        {form.categoryPath || "Choose a category"}
+                      </button>
+                      {categoryOpen && (
+                        <div className="dropdown-panel category-panel">
+                          <div className="category-step-header">
+                            <div className="category-step-meta">
+                              {categoryStep !== "gender" && (
+                                <button
+                                  type="button"
+                                  className="category-back"
+                                  onClick={() =>
+                                    setCategoryStep((prev) =>
+                                      prev === "subcategory"
+                                        ? "category"
+                                        : "gender"
+                                    )
+                                  }
+                                >
+                                  Back
+                                </button>
+                              )}
+                              <div>
+                                <strong>
+                                  {categoryStep === "gender"
+                                    ? "Choose gender"
+                                    : categoryStep === "category"
+                                    ? "Choose category"
+                                    : "Choose subcategory"}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="category-step-list">
+                            {categoryStep === "gender" &&
+                              normalizedCategories.map((gender) => (
+                                <button
+                                  key={gender.label}
+                                  type="button"
+                                  className={
+                                    categorySelection.gender === gender.label
+                                      ? "is-selected"
+                                      : undefined
+                                  }
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    setCategorySelection({
+                                      gender: gender.label,
+                                      category: "",
+                                    });
+                                    setCategoryStep("category");
+                                  }}
+                                >
+                                  {gender.label}
+                                </button>
+                              ))}
+                            {categoryStep === "category" &&
+                              selectedGender?.children.map((category) => (
+                                <button
+                                  key={category.label}
+                                  type="button"
+                                  className={
+                                    categorySelection.category === category.label
+                                      ? "is-selected"
+                                      : undefined
+                                  }
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    setCategorySelection((prev) => ({
+                                      ...prev,
+                                      category: category.label,
+                                    }));
+                                    setCategoryStep("subcategory");
+                                  }}
+                                >
+                                  {category.label}
+                                </button>
+                              ))}
+                            {categoryStep === "subcategory" &&
+                              selectedCategory?.children.map((subcategory) => (
+                                <button
+                                  key={subcategory}
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    handleCategorySelect({
+                                      gender: selectedGender?.label,
+                                      category: selectedCategory?.label,
+                                      subcategory,
+                                    });
+                                  }}
+                                >
+                                  {subcategory}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                  <label className="field">
+                    <span>Item size</span>
+                    <input
+                      name="size"
+                      value={form.size}
+                      onChange={handleChange}
+                      placeholder="IT 40"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="intake-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>Product details</h2>
+                  </div>
+                </div>
+                <div className="field-grid single">
+                  <label className="field">
+                    <span>Shopify description</span>
+                    <textarea
+                      name="shopifyDescription"
+                      value={form.shopifyDescription}
+                      onChange={handleChange}
+                      placeholder="Short description for the listing."
+                    />
+                  </label>
+                  <div className="field condition-field">
+                    <span>Item condition</span>
+                    <div className="condition-slider">
+                      <span className="condition-value">
+                        Condition: {formatCondition(conditionNumber) || "0"}/10
+                      </span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={Number(form.condition || 0)}
+                        onChange={handleConditionChange}
+                        style={{
+                          background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
+                        }}
+                      />
+                      <div className="condition-scale">
+                        <span>0</span>
+                        <span>2.5</span>
+                        <span>5</span>
+                        <span>7.5</span>
+                        <span>10</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="intake-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>Pricing & ownership</h2>
+                  </div>
+                </div>
+                <div className="field-grid three">
+                  <label className="field">
+                    <span>Intake cost</span>
+                    <input
+                      name="cost"
+                      value={formatUSD(form.cost)}
+                      onChange={handleCurrencyChange}
+                      placeholder="$250"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Sell price</span>
+                    <input
+                      name="price"
+                      value={formatUSD(form.price)}
+                      onChange={handleCurrencyChange}
+                      placeholder="$695"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Consignee / Vendor</span>
+                    <div className="spotlight-field compact">
+                      <div className="spotlight-ghost" aria-hidden="true">
+                        <span className="ghost-typed">{form.vendorSource}</span>
+                        <span>{vendorGhostRemainder}</span>
+                      </div>
+                      <input
+                        ref={vendorInputRef}
+                        name="vendorSource"
+                        value={form.vendorSource}
+                        onChange={handleChange}
+                        onKeyDown={handleVendorKeyDown}
+                        placeholder="Search vendors"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </label>
+                </div>
+              </section>
+
+              <section className="intake-section">
+                <div className="section-heading">
+                  <div>
+                    <h2>Location</h2>
+                  </div>
+                </div>
+                <div className="segmented">
+                  {locationOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={
+                        form.location === option.value ? "is-selected" : undefined
+                      }
+                      onClick={() =>
+                        setForm((prev) => ({ ...prev, location: option.value }))
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <div className="sticky-actions">
+                <button type="submit" disabled={status === "loading"}>
+                  {status === "loading" ? "Saving..." : "Save intake"}
                 </button>
-              ))}
-            </div>
-          </section>
-
-          <div className="sticky-actions">
-            <button type="submit" disabled={status === "loading"}>
-              {status === "loading" ? "Saving..." : "Save intake"}
-            </button>
-            {status === "success" && (
-              <span className="success">Saved & validated</span>
-            )}
-            {status === "error" && <span className="error">{error}</span>}
-          </div>
+                {status === "success" && (
+                  <span className="success">Saved & validated</span>
+                )}
+                {status === "error" && <span className="error">{error}</span>}
+              </div>
+            </>
+          )}
         </form>
 
-        <aside className="intake-summary">
-          <div className="summary-card product-preview">
-            <span className="summary-label">Shopify preview</span>
-            <div className="preview-header">
-              <div>
-                <h3>{titlePreview || "Brand + Item Name"}</h3>
-                <span className="preview-price">
-                  {formatUSD(form.price) || "$0.00"}
+        {!quickMode && (
+          <aside className="intake-summary">
+            <div className="summary-card product-preview">
+              <span className="summary-label">Shopify preview</span>
+              <div className="preview-header">
+                <div>
+                  <h3>{titlePreview || "Brand + Item Name"}</h3>
+                  <span className="preview-price">
+                    {formatUSD(form.price) || "$0.00"}
+                  </span>
+                </div>
+                <span className="preview-condition">
+                  {form.condition
+                    ? `${formatCondition(conditionNumber)}/10`
+                    : "Condition --"}
                 </span>
               </div>
-              <span className="preview-condition">
-                {form.condition
-                  ? `${formatConditionValue(conditionNumber)}/10`
-                  : "Condition --"}
-              </span>
-            </div>
-            <p className="preview-description">{descriptionPreview}</p>
-            <div className="preview-grid">
-              <div>
-                <span>Category</span>
-                <strong>{form.categoryPath || "Select a category"}</strong>
-              </div>
-              <div>
-                <span>Size</span>
-                <strong>{form.size || "--"}</strong>
-              </div>
-              <div>
-                <span>Vendor</span>
-                <strong>{form.vendorSource || "--"}</strong>
-              </div>
-              <div>
-                <span>Location</span>
-                <strong>{locationLabel || "--"}</strong>
-              </div>
-              <div>
-                <span>Cost</span>
-                <strong>{formatUSD(form.cost) || "--"}</strong>
+              <p className="preview-description">{descriptionPreview}</p>
+              <div className="preview-grid">
+                <div>
+                  <span>Category</span>
+                  <strong>{form.categoryPath || "Select a category"}</strong>
+                </div>
+                <div>
+                  <span>Size</span>
+                  <strong>{form.size || "--"}</strong>
+                </div>
+                <div>
+                  <span>Vendor</span>
+                  <strong>{form.vendorSource || "--"}</strong>
+                </div>
+                <div>
+                  <span>Location</span>
+                  <strong>{locationLabel || "--"}</strong>
+                </div>
+                <div>
+                  <span>Cost</span>
+                  <strong>{formatUSD(form.cost) || "--"}</strong>
+                </div>
               </div>
             </div>
-          </div>
-          {preview && (
-            <details className="summary-code">
-              <summary>View normalized payload</summary>
-              <pre>{JSON.stringify(preview, null, 2)}</pre>
-            </details>
-          )}
-        </aside>
+            {preview && (
+              <details className="summary-code">
+                <summary>View normalized payload</summary>
+                <pre>{JSON.stringify(preview, null, 2)}</pre>
+              </details>
+            )}
+          </aside>
+        )}
       </div>
     </main>
   );
