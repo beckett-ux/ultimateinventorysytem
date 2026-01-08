@@ -265,15 +265,114 @@ const parseCsv = (content) => {
   return rows;
 };
 
+function ConditionControl({
+  value,
+  conditionNumber,
+  conditionProgress,
+  onChange,
+  onKeyDown,
+  inputRef,
+  className,
+}) {
+  return (
+    <div className={`condition-slider ${className || ""}`.trim()}>
+      <span className="condition-value">
+        Condition: {formatCondition(conditionNumber) || "0"}/10
+      </span>
+      <input
+        ref={inputRef}
+        type="range"
+        min="0"
+        max="10"
+        step="0.5"
+        value={Number(value || 0)}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        style={{
+          background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
+        }}
+      />
+      <div className="condition-scale">
+        <span>0</span>
+        <span>2.5</span>
+        <span>5</span>
+        <span>7.5</span>
+        <span>10</span>
+      </div>
+    </div>
+  );
+}
+
+function ShopifyPreview({
+  preview,
+  titlePreview,
+  descriptionPreview,
+  conditionNumber,
+  form,
+  locationLabel,
+}) {
+  return (
+    <aside className="intake-summary">
+      <div className="summary-card product-preview">
+        <span className="summary-label">Shopify preview</span>
+        <div className="preview-header">
+          <div>
+            <h3>{titlePreview || "Brand + Item Name"}</h3>
+            <span className="preview-price">
+              {formatUSD(form.price) || "$0.00"}
+            </span>
+          </div>
+          <span className="preview-condition">
+            {form.condition
+              ? `${formatCondition(conditionNumber)}/10`
+              : "Condition --"}
+          </span>
+        </div>
+        <p className="preview-description">{descriptionPreview}</p>
+        <div className="preview-grid">
+          <div>
+            <span>Category</span>
+            <strong>{form.categoryPath || "Select a category"}</strong>
+          </div>
+          <div>
+            <span>Size</span>
+            <strong>{form.size || "--"}</strong>
+          </div>
+          <div>
+            <span>Vendor</span>
+            <strong>{form.vendorSource || "--"}</strong>
+          </div>
+          <div>
+            <span>Location</span>
+            <strong>{locationLabel || "--"}</strong>
+          </div>
+          <div>
+            <span>Cost</span>
+            <strong>{formatUSD(form.cost) || "--"}</strong>
+          </div>
+        </div>
+      </div>
+      {preview && (
+        <details className="summary-code">
+          <summary>View normalized payload</summary>
+          <pre>{JSON.stringify(preview, null, 2)}</pre>
+        </details>
+      )}
+    </aside>
+  );
+}
+
 export default function Home() {
   const [form, setForm] = useState(defaultForm);
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
-  const [quickMode, setQuickMode] = useState(false);
+  const [quickMode, setQuickMode] = useState(true);
   const [quickStep, setQuickStep] = useState(0);
   const [quickStatus, setQuickStatus] = useState("idle");
   const [quickError, setQuickError] = useState(null);
+  const [quickItemDetails, setQuickItemDetails] = useState("");
+  const [quickParseError, setQuickParseError] = useState(null);
   const [quickCategoryQuery, setQuickCategoryQuery] = useState("");
   const [quickCategoryIndex, setQuickCategoryIndex] = useState(0);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -289,7 +388,7 @@ export default function Home() {
   const itemNameRef = useRef(null);
   const brandInputRef = useRef(null);
   const vendorInputRef = useRef(null);
-  const quickItemNameRef = useRef(null);
+  const quickItemDetailsRef = useRef(null);
   const quickCategoryRef = useRef(null);
   const quickSizeRef = useRef(null);
   const quickDescriptionRef = useRef(null);
@@ -438,6 +537,8 @@ export default function Home() {
       setQuickStep(0);
       setQuickStatus("idle");
       setQuickError(null);
+      setQuickItemDetails("");
+      setQuickParseError(null);
       setQuickCategoryQuery("");
       setQuickCategoryIndex(0);
       setForm((prev) => ({
@@ -516,7 +617,7 @@ export default function Home() {
   const focusQuickStep = (step) => {
     const focusMap = {
       0: brandInputRef,
-      1: quickItemNameRef,
+      1: quickItemDetailsRef,
       2: quickCategoryRef,
       3: quickSizeRef,
       4: quickDescriptionRef,
@@ -532,6 +633,8 @@ export default function Home() {
       targetRef.current.focus();
     }
   };
+
+  const isQuickStepLocked = (stepIndex) => stepIndex > quickStep;
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -618,13 +721,92 @@ export default function Home() {
   };
 
   const handleQuickDescriptionKeyDown = (event) => {
-    if (
-      event.key === "Enter" &&
-      (event.ctrlKey || event.metaKey) &&
-      !event.shiftKey
-    ) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
-      handleQuickAdvance(5);
+      const target = event.currentTarget;
+      const start = target.selectionStart ?? 0;
+      const end = target.selectionEnd ?? 0;
+      const nextValue = `${form.shopifyDescription.slice(
+        0,
+        start
+      )}\n${form.shopifyDescription.slice(end)}`;
+      setForm((prev) => ({ ...prev, shopifyDescription: nextValue }));
+      requestAnimationFrame(() => {
+        target.selectionStart = start + 1;
+        target.selectionEnd = start + 1;
+        target.focus();
+      });
+      return;
+    }
+
+    event.preventDefault();
+    handleQuickAdvance(5);
+  };
+
+  const isEmptyValue = (value) =>
+    value === null || value === undefined || `${value}`.trim() === "";
+
+  const mergeParsedFields = (parsedFields) => {
+    setForm((prev) => {
+      const next = { ...prev };
+      Object.entries(parsedFields).forEach(([key, value]) => {
+        if (isEmptyValue(value)) {
+          return;
+        }
+        if (key === "brand") {
+          if (isEmptyValue(prev.brand)) {
+            next.brand = value;
+          }
+          return;
+        }
+        if (isEmptyValue(prev[key])) {
+          next[key] = value;
+        }
+      });
+      return next;
+    });
+  };
+
+  const handleQuickItemDetailsSubmit = async () => {
+    const trimmedDetails = quickItemDetails.trim();
+    setQuickParseError(null);
+
+    if (!trimmedDetails) {
+      if (isEmptyValue(form.itemName)) {
+        setForm((prev) => ({ ...prev, itemName: "" }));
+      }
+      handleQuickAdvance(2);
+      return;
+    }
+
+    try {
+      const rawInput = `${form.brand}\n${trimmedDetails}`.trim();
+      const response = await fetch("/api/intake/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawInput }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Unable to parse item details");
+      }
+      const parsedFields = await response.json();
+      mergeParsedFields(parsedFields);
+    } catch (parseError) {
+      setQuickParseError(
+        "Unable to parse item details. Added as item name."
+      );
+      setForm((prev) =>
+        isEmptyValue(prev.itemName)
+          ? { ...prev, itemName: trimmedDetails }
+          : prev
+      );
+    } finally {
+      handleQuickAdvance(2);
     }
   };
 
@@ -792,6 +974,18 @@ export default function Home() {
   const quickProgressStep = Math.min(quickStep + 1, quickTotalSteps);
   const quickActiveCategory =
     filteredQuickCategories[quickCategoryIndex] || null;
+  const quickStepLocks = {
+    brand: isQuickStepLocked(0),
+    itemDetails: isQuickStepLocked(1),
+    category: isQuickStepLocked(2),
+    size: isQuickStepLocked(3),
+    description: isQuickStepLocked(4),
+    condition: isQuickStepLocked(5),
+    cost: isQuickStepLocked(6),
+    price: isQuickStepLocked(7),
+    vendor: isQuickStepLocked(8),
+    location: isQuickStepLocked(9),
+  };
 
   return (
     <main className="intake-shell">
@@ -834,16 +1028,19 @@ export default function Home() {
               </div>
 
               <div className="quick-steps">
-                {quickStep >= 0 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 0 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[0] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.brand ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[0] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Brand</label>
+                  <fieldset
+                    disabled={quickStepLocks.brand}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Brand</label>
                     <div className="spotlight-field">
                       <div className="spotlight-ghost" aria-hidden="true">
                         <span className="ghost-typed">{form.brand}</span>
@@ -859,48 +1056,56 @@ export default function Home() {
                         autoComplete="off"
                       />
                     </div>
-                    <span className="quickHint">
-                      Tab to autocomplete · Enter to continue
-                    </span>
-                  </div>
-                )}
+                  </fieldset>
+                  <span className="quickHint">
+                    Tab to autocomplete · Enter to continue
+                  </span>
+                </div>
 
-                {quickStep >= 1 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 1 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[1] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.itemDetails ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[1] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Item details</label>
+                  <fieldset
+                    disabled={quickStepLocks.itemDetails}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Item name</label>
-                    <input
-                      ref={quickItemNameRef}
-                      name="itemName"
-                      value={form.itemName}
-                      onChange={handleChange}
+                    <textarea
+                      ref={quickItemDetailsRef}
+                      value={quickItemDetails}
+                      onChange={(event) => setQuickItemDetails(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          handleQuickAdvance(2);
+                          handleQuickItemDetailsSubmit();
                         }
                       }}
-                      placeholder="Pony Hair Ramones"
+                      placeholder="Pony hair Ramones sneakers size 13 cost 100 sell 900 9/10"
                     />
-                  </div>
-                )}
+                  </fieldset>
+                  {quickParseError && (
+                    <span className="error">{quickParseError}</span>
+                  )}
+                </div>
 
-                {quickStep >= 2 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 2 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[2] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.category ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[2] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Category</label>
+                  <fieldset
+                    disabled={quickStepLocks.category}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Category</label>
                     <div className="quick-category">
                       <input
                         ref={quickCategoryRef}
@@ -939,29 +1144,32 @@ export default function Home() {
                         )}
                       </div>
                     </div>
-                    {form.categoryPath && (
-                      <span className="quickHint">
-                        Selected: {form.categoryPath}
-                      </span>
-                    )}
-                    {quickActiveCategory && (
-                      <span className="quickHint">
-                        Enter to select {quickActiveCategory.label}
-                      </span>
-                    )}
-                  </div>
-                )}
+                  </fieldset>
+                  {form.categoryPath && (
+                    <span className="quickHint">
+                      Selected: {form.categoryPath}
+                    </span>
+                  )}
+                  {quickActiveCategory && (
+                    <span className="quickHint">
+                      Enter to select {quickActiveCategory.label}
+                    </span>
+                  )}
+                </div>
 
-                {quickStep >= 3 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 3 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[3] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.size ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[3] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Size</label>
+                  <fieldset
+                    disabled={quickStepLocks.size}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Size</label>
                     <input
                       ref={quickSizeRef}
                       name="size"
@@ -975,21 +1183,22 @@ export default function Home() {
                       }}
                       placeholder="IT 40"
                     />
-                  </div>
-                )}
+                  </fieldset>
+                </div>
 
-                {quickStep >= 4 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 4 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[4] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.description ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[4] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Description</label>
+                  <fieldset
+                    disabled={quickStepLocks.description}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">
-                      Shopify description
-                    </label>
                     <textarea
                       ref={quickDescriptionRef}
                       name="shopifyDescription"
@@ -998,56 +1207,55 @@ export default function Home() {
                       onKeyDown={handleQuickDescriptionKeyDown}
                       placeholder="Short description for the listing."
                     />
-                    <span className="quickHint">Ctrl+Enter to continue</span>
-                  </div>
-                )}
+                  </fieldset>
+                  <span className="quickHint">
+                    Enter to continue. Ctrl+Enter for a new line.
+                  </span>
+                </div>
 
-                {quickStep >= 5 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 5 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[5] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.condition ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[5] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Condition</label>
+                  <fieldset
+                    disabled={quickStepLocks.condition}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Condition</label>
-                    <div className="condition-slider quickCondition">
-                      <span className="condition-value">
-                        Condition: {formatCondition(conditionNumber) || "0"}/10
-                      </span>
-                      <input
-                        ref={quickConditionRef}
-                        type="range"
-                        min="0"
-                        max="10"
-                        step="0.5"
-                        value={Number(form.condition || 0)}
-                        onChange={handleConditionChange}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            handleQuickAdvance(6);
-                          }
-                        }}
-                        style={{
-                          background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                    <ConditionControl
+                      value={form.condition}
+                      conditionNumber={conditionNumber}
+                      conditionProgress={conditionProgress}
+                      onChange={handleConditionChange}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleQuickAdvance(6);
+                        }
+                      }}
+                      inputRef={quickConditionRef}
+                      className="quickCondition"
+                    />
+                  </fieldset>
+                </div>
 
-                {quickStep >= 6 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 6 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[6] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.cost ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[6] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Intake cost</label>
+                  <fieldset
+                    disabled={quickStepLocks.cost}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Intake cost</label>
                     <input
                       ref={quickCostRef}
                       name="cost"
@@ -1061,19 +1269,22 @@ export default function Home() {
                       }}
                       placeholder="$250"
                     />
-                  </div>
-                )}
+                  </fieldset>
+                </div>
 
-                {quickStep >= 7 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 7 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[7] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.price ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[7] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Sell price</label>
+                  <fieldset
+                    disabled={quickStepLocks.price}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Sell price</label>
                     <input
                       ref={quickPriceRef}
                       name="price"
@@ -1087,21 +1298,22 @@ export default function Home() {
                       }}
                       placeholder="$695"
                     />
-                  </div>
-                )}
+                  </fieldset>
+                </div>
 
-                {quickStep >= 8 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 8 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[8] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.vendor ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[8] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Vendor</label>
+                  <fieldset
+                    disabled={quickStepLocks.vendor}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">
-                      Consignee / Vendor
-                    </label>
                     <div className="spotlight-field compact">
                       <div className="spotlight-ghost" aria-hidden="true">
                         <span className="ghost-typed">
@@ -1119,22 +1331,25 @@ export default function Home() {
                         autoComplete="off"
                       />
                     </div>
-                    <span className="quickHint">
-                      Tab to autocomplete · Enter to continue
-                    </span>
-                  </div>
-                )}
+                  </fieldset>
+                  <span className="quickHint">
+                    Tab to autocomplete · Enter to continue
+                  </span>
+                </div>
 
-                {quickStep >= 9 && (
-                  <div
-                    className={`quickStep ${
-                      quickStep > 9 ? "quickStepCompleted" : ""
-                    }`}
-                    ref={(el) => {
-                      quickStepRefs.current[9] = el;
-                    }}
+                <div
+                  className={`quickStep ${
+                    quickStepLocks.location ? "quickStepLocked" : ""
+                  }`}
+                  ref={(el) => {
+                    quickStepRefs.current[9] = el;
+                  }}
+                >
+                  <label className="quickStepLabel">Location</label>
+                  <fieldset
+                    disabled={quickStepLocks.location}
+                    className="quickStepFieldset"
                   >
-                    <label className="quickStepLabel">Location</label>
                     <div
                       className="segmented"
                       ref={quickLocationRef}
@@ -1161,9 +1376,9 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
-                    <span className="quickHint">Enter to save</span>
-                  </div>
-                )}
+                  </fieldset>
+                  <span className="quickHint">Enter to save</span>
+                </div>
 
                 {quickStep >= 10 && (
                   <div
@@ -1426,29 +1641,12 @@ export default function Home() {
                   </label>
                   <div className="field condition-field">
                     <span>Item condition</span>
-                    <div className="condition-slider">
-                      <span className="condition-value">
-                        Condition: {formatCondition(conditionNumber) || "0"}/10
-                      </span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="10"
-                        step="0.5"
-                        value={Number(form.condition || 0)}
-                        onChange={handleConditionChange}
-                        style={{
-                          background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
-                        }}
-                      />
-                      <div className="condition-scale">
-                        <span>0</span>
-                        <span>2.5</span>
-                        <span>5</span>
-                        <span>7.5</span>
-                        <span>10</span>
-                      </div>
-                    </div>
+                    <ConditionControl
+                      value={form.condition}
+                      conditionNumber={conditionNumber}
+                      conditionProgress={conditionProgress}
+                      onChange={handleConditionChange}
+                    />
                   </div>
                 </div>
               </section>
@@ -1536,55 +1734,14 @@ export default function Home() {
           )}
         </form>
 
-        {!quickMode && (
-          <aside className="intake-summary">
-            <div className="summary-card product-preview">
-              <span className="summary-label">Shopify preview</span>
-              <div className="preview-header">
-                <div>
-                  <h3>{titlePreview || "Brand + Item Name"}</h3>
-                  <span className="preview-price">
-                    {formatUSD(form.price) || "$0.00"}
-                  </span>
-                </div>
-                <span className="preview-condition">
-                  {form.condition
-                    ? `${formatCondition(conditionNumber)}/10`
-                    : "Condition --"}
-                </span>
-              </div>
-              <p className="preview-description">{descriptionPreview}</p>
-              <div className="preview-grid">
-                <div>
-                  <span>Category</span>
-                  <strong>{form.categoryPath || "Select a category"}</strong>
-                </div>
-                <div>
-                  <span>Size</span>
-                  <strong>{form.size || "--"}</strong>
-                </div>
-                <div>
-                  <span>Vendor</span>
-                  <strong>{form.vendorSource || "--"}</strong>
-                </div>
-                <div>
-                  <span>Location</span>
-                  <strong>{locationLabel || "--"}</strong>
-                </div>
-                <div>
-                  <span>Cost</span>
-                  <strong>{formatUSD(form.cost) || "--"}</strong>
-                </div>
-              </div>
-            </div>
-            {preview && (
-              <details className="summary-code">
-                <summary>View normalized payload</summary>
-                <pre>{JSON.stringify(preview, null, 2)}</pre>
-              </details>
-            )}
-          </aside>
-        )}
+        <ShopifyPreview
+          preview={preview}
+          titlePreview={titlePreview}
+          descriptionPreview={descriptionPreview}
+          conditionNumber={conditionNumber}
+          form={form}
+          locationLabel={locationLabel}
+        />
       </div>
     </main>
   );
