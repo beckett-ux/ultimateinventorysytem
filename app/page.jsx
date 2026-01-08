@@ -10,7 +10,7 @@ const defaultForm = {
   categoryPath: "",
   shopifyDescription: "",
   size: "",
-  condition: "",
+  condition: "10",
   cost: "",
   price: "",
   location: "dupont",
@@ -198,6 +198,11 @@ export default function Home() {
   const itemNameRef = useRef(null);
   const brandInputRef = useRef(null);
   const vendorInputRef = useRef(null);
+
+  const categoryStepIndex = useMemo(
+    () => ({ gender: 1, category: 2, subcategory: 3 }[categoryStep] || 1),
+    [categoryStep]
+  );
 
   const normalizedCategories = useMemo(
     () => categoryTree.map(normalizeCategoryNode),
@@ -526,28 +531,45 @@ export default function Home() {
                   {categoryOpen && (
                     <div className="dropdown-panel category-panel">
                       <div className="category-step-header">
-                        {categoryStep !== "gender" && (
-                          <button
-                            type="button"
-                            className="category-back"
-                            onClick={() =>
-                              setCategoryStep((prev) =>
-                                prev === "subcategory" ? "category" : "gender"
-                              )
-                            }
-                          >
-                            Back
-                          </button>
-                        )}
-                        <div>
-                          <span className="category-label">Step</span>
-                          <strong>
-                            {categoryStep === "gender"
-                              ? "Choose gender"
-                              : categoryStep === "category"
-                              ? "Choose category"
-                              : "Choose subcategory"}
-                          </strong>
+                        <div className="category-step-meta">
+                          {categoryStep !== "gender" && (
+                            <button
+                              type="button"
+                              className="category-back"
+                              onClick={() =>
+                                setCategoryStep((prev) =>
+                                  prev === "subcategory" ? "category" : "gender"
+                                )
+                              }
+                            >
+                              Back
+                            </button>
+                          )}
+                          <div>
+                            <span className="category-label">
+                              Step {categoryStepIndex} of 3
+                            </span>
+                            <strong>
+                              {categoryStep === "gender"
+                                ? "Choose gender"
+                                : categoryStep === "category"
+                                ? "Choose category"
+                                : "Choose subcategory"}
+                            </strong>
+                          </div>
+                        </div>
+                        <div className="category-breadcrumb">
+                          <span>
+                            {categorySelection.gender || "Gender"}
+                          </span>
+                          <span>
+                            {categorySelection.category || "Category"}
+                          </span>
+                          <span>
+                            {categoryStep === "subcategory"
+                              ? "Subcategory"
+                              : "Next"}
+                          </span>
                         </div>
                       </div>
                       <div className="category-step-list">
@@ -561,7 +583,8 @@ export default function Home() {
                                   ? "is-selected"
                                   : undefined
                               }
-                              onClick={() => {
+                              onClick={(event) => {
+                                event.preventDefault();
                                 setCategorySelection({
                                   gender: gender.label,
                                   category: "",
@@ -582,7 +605,8 @@ export default function Home() {
                                   ? "is-selected"
                                   : undefined
                               }
-                              onClick={() => {
+                              onClick={(event) => {
+                                event.preventDefault();
                                 setCategorySelection((prev) => ({
                                   ...prev,
                                   category: category.label,
@@ -633,7 +657,7 @@ export default function Home() {
                 <p>Capture condition and description once the basics are in.</p>
               </div>
             </div>
-            <div className="field-grid two">
+            <div className="field-grid single">
               <label className="field">
                 <span>Shopify description</span>
                 <textarea
