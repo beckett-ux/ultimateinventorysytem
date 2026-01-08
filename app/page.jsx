@@ -95,10 +95,14 @@ const fallbackVendorOptions = [
   "Consignment - Harper",
 ];
 
-const conditionValues = Array.from({ length: 21 }, (_, index) => {
-  const value = (index * 0.5).toFixed(1);
-  return value.endsWith(".0") ? value.replace(".0", "") : value;
-});
+const formatConditionValue = (value) => {
+  const normalized = Number.parseFloat(value);
+  if (Number.isNaN(normalized)) {
+    return "";
+  }
+  const formatted = normalized.toFixed(1);
+  return formatted.endsWith(".0") ? formatted.replace(".0", "") : formatted;
+};
 
 const normalizeCategoryNode = (node) => {
   if (typeof node === "string") {
@@ -183,6 +187,7 @@ export default function Home() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryStep, setCategoryStep] = useState("gender");
   const [categorySelection, setCategorySelection] = useState({
     gender: categoryTree[0]?.label || "",
     category: "",
@@ -277,6 +282,14 @@ export default function Home() {
     );
   }, [form.location]);
 
+  const conditionProgress = useMemo(() => {
+    const value = Number.parseFloat(form.condition || "0");
+    if (Number.isNaN(value)) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, (value / 10) * 100));
+  }, [form.condition]);
+
   useEffect(() => {
     const sheetId = process.env.NEXT_PUBLIC_VENDOR_SHEET_ID;
     if (!sheetId) {
@@ -340,6 +353,7 @@ export default function Home() {
       categoryPath: buildCategoryPath([gender, category, subcategory]),
     }));
     setCategoryOpen(false);
+    setCategoryStep("gender");
   };
 
   const handleBrandEdit = () => {
@@ -369,9 +383,30 @@ export default function Home() {
           gender: gender || current.gender || categoryTree[0]?.label || "",
           category: category || current.category || "",
         }));
+        setCategoryStep("gender");
       }
       return next;
     });
+  };
+
+  const handleConditionChange = (event) => {
+    const formatted = formatConditionValue(event.target.value);
+    setForm((prev) => ({ ...prev, condition: formatted }));
+  };
+
+  const formatCurrencyInput = (value) => {
+    const cleaned = value.replace(/[^0-9.]/g, "");
+    if (!cleaned) {
+      return "";
+    }
+    const parts = cleaned.split(".");
+    const normalized = parts.length > 1 ? `${parts[0]}.${parts.slice(1).join("")}` : parts[0];
+    return `$${normalized}`;
+  };
+
+  const handleCurrencyChange = (event) => {
+    const { name, value } = event.target;
+    setForm((prev) => ({ ...prev, [name]: formatCurrencyInput(value) }));
   };
 
   const handleSubmit = async (event) => {
@@ -490,67 +525,90 @@ export default function Home() {
                   </button>
                   {categoryOpen && (
                     <div className="dropdown-panel category-panel">
-                      <div className="category-column">
-                        <span className="category-label">Gender</span>
-                        {normalizedCategories.map((gender) => (
+                      <div className="category-step-header">
+                        {categoryStep !== "gender" && (
                           <button
-                            key={gender.label}
                             type="button"
-                            className={
-                              categorySelection.gender === gender.label
-                                ? "is-selected"
-                                : undefined
-                            }
+                            className="category-back"
                             onClick={() =>
-                              setCategorySelection({
-                                gender: gender.label,
-                                category: "",
-                              })
+                              setCategoryStep((prev) =>
+                                prev === "subcategory" ? "category" : "gender"
+                              )
                             }
                           >
-                            {gender.label}
+                            Back
                           </button>
-                        ))}
+                        )}
+                        <div>
+                          <span className="category-label">Step</span>
+                          <strong>
+                            {categoryStep === "gender"
+                              ? "Choose gender"
+                              : categoryStep === "category"
+                              ? "Choose category"
+                              : "Choose subcategory"}
+                          </strong>
+                        </div>
                       </div>
-                      <div className="category-column">
-                        <span className="category-label">Category</span>
-                        {selectedGender?.children.map((category) => (
-                          <button
-                            key={category.label}
-                            type="button"
-                            className={
-                              categorySelection.category === category.label
-                                ? "is-selected"
-                                : undefined
-                            }
-                            onClick={() =>
-                              setCategorySelection((prev) => ({
-                                ...prev,
-                                category: category.label,
-                              }))
-                            }
-                          >
-                            {category.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="category-column">
-                        <span className="category-label">Subcategory</span>
-                        {selectedCategory?.children.map((subcategory) => (
-                          <button
-                            key={subcategory}
-                            type="button"
-                            onClick={() =>
-                              handleCategorySelect({
-                                gender: selectedGender?.label,
-                                category: selectedCategory?.label,
-                                subcategory,
-                              })
-                            }
-                          >
-                            {subcategory}
-                          </button>
-                        ))}
+                      <div className="category-step-list">
+                        {categoryStep === "gender" &&
+                          normalizedCategories.map((gender) => (
+                            <button
+                              key={gender.label}
+                              type="button"
+                              className={
+                                categorySelection.gender === gender.label
+                                  ? "is-selected"
+                                  : undefined
+                              }
+                              onClick={() => {
+                                setCategorySelection({
+                                  gender: gender.label,
+                                  category: "",
+                                });
+                                setCategoryStep("category");
+                              }}
+                            >
+                              {gender.label}
+                            </button>
+                          ))}
+                        {categoryStep === "category" &&
+                          selectedGender?.children.map((category) => (
+                            <button
+                              key={category.label}
+                              type="button"
+                              className={
+                                categorySelection.category === category.label
+                                  ? "is-selected"
+                                  : undefined
+                              }
+                              onClick={() => {
+                                setCategorySelection((prev) => ({
+                                  ...prev,
+                                  category: category.label,
+                                }));
+                                setCategoryStep("subcategory");
+                              }}
+                            >
+                              {category.label}
+                            </button>
+                          ))}
+                        {categoryStep === "subcategory" &&
+                          selectedCategory?.children.map((subcategory) => (
+                            <button
+                              key={subcategory}
+                              type="button"
+                              onClick={() =>
+                                handleCategorySelect({
+                                  gender: selectedGender?.label,
+                                  category: selectedCategory?.label,
+                                  subcategory,
+                                })
+                              }
+                            >
+                              {subcategory}
+                            </button>
+                          ))}
                       </div>
                     </div>
                   )}
@@ -587,21 +645,28 @@ export default function Home() {
               </label>
               <div className="field condition-field">
                 <span>Item condition</span>
-                <div className="condition-scale">
-                  {conditionValues.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      className={
-                        form.condition === value ? "is-selected" : undefined
-                      }
-                      onClick={() =>
-                        setForm((prev) => ({ ...prev, condition: value }))
-                      }
-                    >
-                      {value}/10
-                    </button>
-                  ))}
+                <div className="condition-slider">
+                  <span className="condition-value">
+                    Condition: {form.condition || "0"}/10
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={form.condition || 0}
+                    onChange={handleConditionChange}
+                    style={{
+                      background: `linear-gradient(90deg, #111827 ${conditionProgress}%, #cbd5f5 ${conditionProgress}%)`,
+                    }}
+                  />
+                  <div className="condition-scale">
+                    <span>0</span>
+                    <span>2.5</span>
+                    <span>5</span>
+                    <span>7.5</span>
+                    <span>10</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -620,7 +685,7 @@ export default function Home() {
                 <input
                   name="cost"
                   value={form.cost}
-                  onChange={handleChange}
+                  onChange={handleCurrencyChange}
                   placeholder="$250"
                 />
               </label>
@@ -629,7 +694,7 @@ export default function Home() {
                 <input
                   name="price"
                   value={form.price}
-                  onChange={handleChange}
+                  onChange={handleCurrencyChange}
                   placeholder="$695"
                 />
               </label>
