@@ -266,11 +266,13 @@ export default function Home() {
   }, [vendorSuggestion, form.vendorSource]);
 
   const titlePreview = useMemo(() => {
-    const parts = [form.brand, form.itemName]
+    const categoryParts = parseCategoryPath(form.categoryPath);
+    const finalCategory = categoryParts[categoryParts.length - 1] || "";
+    const parts = [form.brand, form.itemName, finalCategory]
       .map((value) => value.trim())
       .filter(Boolean);
     return parts.length ? parts.join(" ") : "";
-  }, [form.brand, form.itemName]);
+  }, [form.brand, form.itemName, form.categoryPath]);
 
   const descriptionPreview = useMemo(() => {
     if (!form.shopifyDescription) {
@@ -447,14 +449,7 @@ export default function Home() {
       <header className="intake-header">
         <div>
           <span className="intake-kicker">Inventory Intake</span>
-          <h1>New product intake</h1>
-          <p>
-            A single-page workflow designed for fast, keyboard-first entry with
-            instant validation.
-          </p>
-        </div>
-        <div className="intake-status">
-          <span>Draft saved automatically</span>
+          <h1>Street Commerce</h1>
         </div>
       </header>
 
@@ -464,7 +459,6 @@ export default function Home() {
             <div className="section-heading">
               <div>
                 <h2>Start with brand</h2>
-                <p>Type to autocomplete. Enter locks the brand and moves on.</p>
               </div>
               {brandLocked && (
                 <button
@@ -492,19 +486,12 @@ export default function Home() {
                 readOnly={brandLocked}
               />
             </div>
-            {brandSuggestion && !brandLocked && (
-              <span className="hint">Press Enter to accept {brandSuggestion}.</span>
-            )}
-            {!brandSuggestion && form.brand && !brandLocked && (
-              <span className="hint">New brand? Press Enter to add it.</span>
-            )}
           </section>
 
           <section className="intake-section">
             <div className="section-heading">
               <div>
                 <h2>Core identity</h2>
-                <p>Everything needed for the product title and category path.</p>
               </div>
             </div>
             <div className="field-grid three">
@@ -606,13 +593,14 @@ export default function Home() {
                             <button
                               key={subcategory}
                               type="button"
-                              onClick={() =>
+                              onClick={(event) => {
+                                event.preventDefault();
                                 handleCategorySelect({
                                   gender: selectedGender?.label,
                                   category: selectedCategory?.label,
                                   subcategory,
-                                })
-                              }
+                                });
+                              }}
                             >
                               {subcategory}
                             </button>
@@ -638,7 +626,6 @@ export default function Home() {
             <div className="section-heading">
               <div>
                 <h2>Product details</h2>
-                <p>Capture condition and description once the basics are in.</p>
               </div>
             </div>
             <div className="field-grid single">
@@ -684,7 +671,6 @@ export default function Home() {
             <div className="section-heading">
               <div>
                 <h2>Pricing & ownership</h2>
-                <p>Enter financials and who the item belongs to.</p>
               </div>
             </div>
             <div className="field-grid three">
@@ -723,13 +709,6 @@ export default function Home() {
                     autoComplete="off"
                   />
                 </div>
-                {vendorSuggestion &&
-                  vendorSuggestion !== form.vendorSource &&
-                  form.vendorSource && (
-                    <span className="hint">
-                      Press Enter to accept {vendorSuggestion}.
-                    </span>
-                  )}
               </label>
             </div>
           </section>
@@ -738,7 +717,6 @@ export default function Home() {
             <div className="section-heading">
               <div>
                 <h2>Location</h2>
-                <p>Select the store location for this intake.</p>
               </div>
             </div>
             <div className="segmented">
