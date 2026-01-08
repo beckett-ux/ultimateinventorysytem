@@ -26,7 +26,6 @@ const titleFormat = "{BrandName} {ItemDescription} {SubCategory}";
 
 const titleFormatRules = [
   "Title must contain exactly three components: BrandName, ItemDescription, SubCategory.",
-  "BrandName must match the approved brand list exactly (spelling/casing).",
   "ItemDescription should be a short identifying phrase (no brand repeat, avoid subcategory repeat unless needed).",
   "SubCategory must be the final selected category label.",
   "Use single spaces only. No punctuation or separators.",
@@ -56,8 +55,15 @@ const normalizeTags = ({ size, condition, location }) => {
   ].filter(Boolean);
 };
 
-const normalizeCategoryPath = ({ category, subCategory }) => {
-  return `${category.trim()} > ${subCategory.trim()}`;
+const extractCategoryParts = (categoryPath) => {
+  const parts = categoryPath
+    .split(/›|>/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const category = parts[0] || categoryPath.trim();
+  const subCategory = parts[parts.length - 1] || categoryPath.trim();
+
+  return { category, subCategory };
 };
 
 export async function POST(request) {
@@ -72,11 +78,13 @@ export async function POST(request) {
       );
     }
 
+    const { category, subCategory } = extractCategoryParts(parsed.categoryPath);
+
     const gptPrompt = [
       "You are normalizing product titles.",
       `Brand: ${parsed.brand.trim()}`,
       `ItemDescription: ${parsed.itemName.trim()}`,
-      `SubCategory: ${parsed.subCategory.trim()}`,
+      `SubCategory: ${subCategory.trim()}`,
       `Format: ${titleFormat}`,
       "Rules:",
       ...titleFormatRules.map((rule) => `- ${rule}`),
@@ -112,14 +120,14 @@ export async function POST(request) {
     }
 
     const normalizedBrand = parsed.brand.trim();
-    const normalizedSubCategory = toTitleCase(parsed.subCategory.trim());
+    const normalizedSubCategory = toTitleCase(subCategory.trim());
     const normalizedTitle = gptResult.data.title.replace(/\s+/g, " ").trim();
     const brandPattern = new RegExp(
       `^${escapeRegExp(normalizedBrand)}\\s+`,
       "i"
     );
     const subCategoryPattern = new RegExp(
-      `\\s+${escapeRegExp(parsed.subCategory.trim())}$`,
+      `\\s+${escapeRegExp(subCategory.trim())}$`,
       "i"
     );
     const extractedItemDescription = normalizedTitle
@@ -145,7 +153,7 @@ export async function POST(request) {
       titleFormat,
       titleFormatRules,
       normalizedBrand,
-      categoryPath: normalizeCategoryPath(parsed),
+      categoryPath: `${category.trim()} > ${normalizedSubCategory}`,
       tags: normalizeTags(parsed),
       pricing: {
         cost: parsed.cost.trim(),
