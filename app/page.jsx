@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import { approvedBrands } from "@/lib/approvedBrands";
 import SpeechMicButton from "../components/SpeechMicButton";
@@ -543,13 +543,29 @@ export default function Home() {
   const quickTotalSteps = 10;
 
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const shop = (searchParams.get("shop") || "").trim().toLowerCase();
+  const [shop, setShop] = useState("");
   const [shopDraft, setShopDraft] = useState(shop);
   const [shopGateError, setShopGateError] = useState("");
   const [shopInstalled, setShopInstalled] = useState(null);
   const [shopInstallCheckStatus, setShopInstallCheckStatus] = useState("idle");
   const [shopInstallCheckError, setShopInstallCheckError] = useState("");
+
+  useEffect(() => {
+    const readShopFromLocation = () => {
+      if (typeof window === "undefined") {
+        return "";
+      }
+      const params = new URLSearchParams(window.location.search);
+      return (params.get("shop") || "").trim().toLowerCase();
+    };
+
+    const syncShop = () => setShop(readShopFromLocation());
+    syncShop();
+    window.addEventListener("popstate", syncShop);
+    return () => {
+      window.removeEventListener("popstate", syncShop);
+    };
+  }, []);
 
   useEffect(() => {
     setShopDraft(shop);
@@ -609,6 +625,7 @@ export default function Home() {
       return;
     }
 
+    setShop(normalized);
     router.push(`/?shop=${encodeURIComponent(normalized)}`);
   };
 
@@ -1342,7 +1359,10 @@ export default function Home() {
           <button
             type="button"
             className="text-button"
-            onClick={() => router.push("/")}
+            onClick={() => {
+              setShop("");
+              router.push("/");
+            }}
           >
             Use a different shop
           </button>
