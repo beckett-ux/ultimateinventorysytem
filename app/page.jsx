@@ -1381,6 +1381,13 @@ export default function Home() {
         </div>
 
         <div className="intakeHeaderRight">
+          <a
+            className="text-button"
+            style={{ marginRight: 16, textDecoration: "none" }}
+            href={`/settings?shop=${encodeURIComponent(shop)}`}
+          >
+            Settings
+          </a>
           <label className="quickModeToggle">
             <input
               className="quickModeCheckbox"
