@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { z } from "zod";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 const quickInputSchema = z.object({
   rawInput: z.string().trim().min(1, "rawInput is required"),
 });
@@ -391,12 +389,15 @@ export async function POST(request) {
     const payload = await request.json();
     const parsedInput = quickInputSchema.parse(payload);
 
-    if (!process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
         { error: "OPENAI_API_KEY is not configured" },
         { status: 500 }
       );
     }
+
+    const openai = new OpenAI({ apiKey });
 
     const gptPrompt = [
       "You are extracting product intake fields from freeform text.",

@@ -69,8 +69,6 @@ const gptTitleSchema = z.object({
   title: z.string().min(1, "Title is required"),
 });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 const parseGptJson = (content) => {
   try {
     return JSON.parse(content);
@@ -104,12 +102,15 @@ export async function POST(request) {
     const payload = await request.json();
     const parsed = intakeInputSchema.parse(payload);
 
-    if (!process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
         { error: "OPENAI_API_KEY is not configured" },
         { status: 500 }
       );
     }
+
+    const openai = new OpenAI({ apiKey });
 
     const { category, subCategory } = extractCategoryParts(parsed.categoryPath);
 
