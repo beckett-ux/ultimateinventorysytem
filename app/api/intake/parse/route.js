@@ -116,6 +116,38 @@ const normalizeShopifyDescription = (value) => {
   return lines.join("\n");
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const sanitizeShopifyDescription = (value, { brand, itemName }) => {
+  if (!value) {
+    return "";
+  }
+  let cleaned = value;
+  if (brand) {
+    cleaned = cleaned.replace(new RegExp(escapeRegex(brand), "gi"), "");
+  }
+  if (itemName) {
+    cleaned = cleaned.replace(new RegExp(escapeRegex(itemName), "gi"), "");
+  }
+  cleaned = cleaned.replace(
+    /\b(?:mens|men's|womens|women's)?\s*size\s*\d+(\.\d+)?\b/gi,
+    ""
+  );
+  cleaned = cleaned.replace(/\bcondition\s*:?[^.\n]*\b/gi, "");
+  cleaned = cleaned.replace(/\bbought for[^.\n]*\b/gi, "");
+  cleaned = cleaned.replace(/\bsell for[^.\n]*\b/gi, "");
+  cleaned = cleaned.replace(/\bdupont(?: store)?\b/gi, "");
+  cleaned = cleaned.replace(/\bcharlotte(?: store)?\b/gi, "");
+  cleaned = cleaned.replace(/\s+,/g, ",");
+  cleaned = cleaned.replace(/,\s*\./g, ".");
+  cleaned = cleaned.replace(/^[\s,.-]+/g, "");
+  cleaned = cleaned.replace(/[\s,.-]+$/g, "");
+  cleaned = cleaned.replace(/[ \t]+\n/g, "\n");
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  return cleaned;
+};
+
 export async function POST(request) {
   try {
     const payload = await request.json();
@@ -141,13 +173,11 @@ export async function POST(request) {
       "Cost and price must be numeric strings without '$'.",
       "Avoid adjacent duplicate words in itemName. Do not repeat category words in itemName.",
       "If condition is written like 9/10, return 9.",
-      "Generate shopifyDescription as store-ready copy with corrected spelling and grammar.",
-      "Do not include internal cost/pricing in shopifyDescription.",
-      "shopifyDescription format (plain text with line breaks, keep consistent order):",
-      "Line 1: Single sentence summary (Brand + item + size if known).",
-      "Line 2: Condition sentence using normalized score (Condition: 9/10. ...).",
-      "Line 3: Includes: ... (only if provided).",
-      "Line 4: Ships from <location> (only if provided).",
+      "Generate shopifyDescription as store-ready notes only.",
+      "shopifyDescription must ONLY include notes not represented by structured fields.",
+      "Do not include brand, itemName, categoryPath, size, condition score, cost, price, vendor, or location.",
+      "If there are no additional notes, return an empty string for shopifyDescription.",
+      "Use a single short paragraph or 1–2 bullet points max with correct spelling and grammar.",
       'Example input: "Rick Owens, pony hair, Ramone, size 12, sneaker"',
       'Possible output: {"brand":"Rick Owens","itemName":"Pony Hair Ramones","categoryPath":"Mens > Shoes > Sneakers","size":"12","condition":"8","cost":"300","price":"900","location":"","vendorSource":""}',
       `Input: """${parsedInput.rawInput}"""`,
@@ -189,7 +219,10 @@ export async function POST(request) {
       itemName: dedupeAdjacentWords(gptResult.data.itemName.trim()),
       categoryPath: gptResult.data.categoryPath.trim(),
       shopifyDescription: normalizeShopifyDescription(
-        gptResult.data.shopifyDescription
+        sanitizeShopifyDescription(gptResult.data.shopifyDescription, {
+          brand: gptResult.data.brand,
+          itemName: gptResult.data.itemName,
+        })
       ),
       size: gptResult.data.size.trim(),
       condition: normalizeConditionInput(gptResult.data.condition),
