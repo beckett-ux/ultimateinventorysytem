@@ -19,6 +19,13 @@ CREATE TABLE IF NOT EXISTS shop_settings (
   CONSTRAINT shop_settings_shop_id_unique UNIQUE (shop_id)
 );
 
+-- Ensure existing databases have the columns/keys needed for UPSERTs.
+ALTER TABLE shop_settings
+  ADD COLUMN IF NOT EXISTS default_location_id BIGINT;
+
+-- UPSERTs rely on a unique constraint or unique index on (shop_id).
+CREATE UNIQUE INDEX IF NOT EXISTS shop_settings_shop_id_unique ON shop_settings (shop_id);
+
 CREATE TABLE IF NOT EXISTS intakes (
   id BIGSERIAL PRIMARY KEY,
   shop_id BIGINT NOT NULL REFERENCES shops (id) ON DELETE CASCADE,
