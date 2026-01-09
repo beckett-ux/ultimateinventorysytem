@@ -10,11 +10,13 @@
 
 - Required env var: `DATABASE_URL` (set it in `.env.local`; `.env.local` is not committed).
 - Local Postgres: run Postgres locally (for example via Docker) using the container name `intake-postgres`.
-- Data table: `inventory_items`
-- Columns: `id`, `title`, `sku`, `brand`, `category`, `condition`, `price_cents`, `notes`, `created_at`
-- Initialization: the SQL schema file for creating `inventory_items` will be added in an upcoming PR; once available, run it against your local Postgres database to create the table.
+- Canonical schema: `db/schema.sql` (creates the `inventory_items` table).
+- Apply the schema to the running `intake-postgres` container using `psql`:
+  - PowerShell: `Get-Content db/schema.sql | docker exec -i intake-postgres psql -U postgres -d intake`
+  - bash/zsh: `docker exec -i intake-postgres psql -U postgres -d intake < db/schema.sql`
 - Verification checklist:
   - Postgres is running locally (or via Docker) and the container is named `intake-postgres`.
   - `DATABASE_URL` points to your local Postgres instance and the `intake` database.
-  - The `inventory_items` table exists and includes the columns listed above.
-  - The dev server starts and the home page loads in the browser.
+  - The schema applied cleanly and `inventory_items` exists (for example: `docker exec -it intake-postgres psql -U postgres -d intake -c \"\\\\d inventory_items\"`).
+  - Start the dev server with `npm run dev`, open `http://localhost:3000`, enter a Title, and click Save.
+  - Confirm the UI reports success and returns an `id`.

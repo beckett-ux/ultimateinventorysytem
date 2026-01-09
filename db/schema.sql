@@ -48,3 +48,16 @@ CREATE INDEX IF NOT EXISTS idx_shop_settings_shop_id ON shop_settings (shop_id);
 CREATE INDEX IF NOT EXISTS idx_intakes_shop_created_at_desc ON intakes (shop_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_product_mappings_intake_id ON product_mappings (intake_id);
 
+-- Inventory intake table used by the local UI.
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  sku TEXT,
+  brand TEXT,
+  category TEXT,
+  condition TEXT,
+  price_cents INTEGER,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
