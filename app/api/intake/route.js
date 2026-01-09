@@ -15,13 +15,42 @@ const intakeInsertSchema = z.object({
 });
 
 export async function POST(request) {
-  let payload;
+  const diagnostics = {
+    method: request.method,
+    contentType: request.headers.get("content-type"),
+    rawBodyLength: 0,
+  };
 
+  let rawBody = "";
   try {
-    payload = await request.json();
+    rawBody = await request.text();
   } catch {
     return NextResponse.json(
-      { ok: false, error: "Request body must be valid JSON." },
+      { ok: false, error: "Unable to read request body.", diagnostics },
+      { status: 400 }
+    );
+  }
+
+  diagnostics.rawBodyLength = Buffer.byteLength(rawBody, "utf8");
+
+  if (!rawBody || rawBody.trim().length === 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Request body is empty. If you are sending JSON, ensure you are including a request body and that no middleware is consuming it.",
+        diagnostics,
+      },
+      { status: 400 }
+    );
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Request body is malformed JSON.", diagnostics },
       { status: 400 }
     );
   }
