@@ -506,6 +506,11 @@ textarea {
   color: #0f172a;
 }
 
+.conditionValue {
+  font-weight: 600;
+  font-size: 16px;
+}
+
 .condition-slider input[type="range"] {
   width: 100%;
   appearance: none;
@@ -694,6 +699,21 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.2em;
   color: #94a3b8;
+}
+
+.checklist-card {
+  gap: 10px;
+}
+
+.checklist-card .summary-label {
+  text-transform: none;
+}
+
+.checklist-body {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
 }
 
 .summary-card strong {

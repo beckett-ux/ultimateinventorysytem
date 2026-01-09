@@ -273,12 +273,15 @@ function ConditionControl({
   onKeyDown,
   inputRef,
   className,
+  valuePrefix = "Condition: ",
+  valueClassName,
 }) {
+  const conditionLabel = `${formatCondition(conditionNumber) || "0"}/10`;
   return (
     <div className={`condition-slider ${className || ""}`.trim()}>
-      <span className="condition-value">
-        Condition: {formatCondition(conditionNumber) || "0"}/10
-      </span>
+      <span
+        className={`condition-value ${valueClassName || ""}`.trim()}
+      >{`${valuePrefix}${conditionLabel}`}</span>
       <input
         ref={inputRef}
         type="range"
@@ -380,6 +383,15 @@ function ShopifyPreview({
             <strong>{formatUSD(form.cost) || "--"}</strong>
           </div>
         </div>
+      </div>
+      <div className="summary-card checklist-card">
+        <span className="summary-label checklist-title">
+          Each listing requires:
+        </span>
+        <p className="checklist-body">
+          Brand, Category, Size, Description, Condition, Intake cost, Sale
+          price, Vendor, Location
+        </p>
       </div>
       {preview && (
         <details className="summary-code">
@@ -1091,7 +1103,7 @@ export default function Home() {
                 <div
                   className={`quickStep ${
                     quickStepLocks.brand ? "quickStepLocked" : ""
-                  } field`}
+                  }`}
                   ref={(el) => {
                     quickStepRefs.current[0] = el;
                   }}
@@ -1108,6 +1120,7 @@ export default function Home() {
                       onChange={handleChange}
                       onKeyDown={handleQuickBrandKeyDown}
                       placeholder="Start typing a brand"
+                      readOnly={brandLocked}
                     />
                   </fieldset>
                   <span className="quickHint">
@@ -1304,6 +1317,8 @@ export default function Home() {
                       }}
                       inputRef={quickConditionRef}
                       className="quickCondition"
+                      valuePrefix=""
+                      valueClassName="conditionValue"
                     />
                   </fieldset>
                 </div>
