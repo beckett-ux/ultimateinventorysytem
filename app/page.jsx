@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { approvedBrands } from "@/lib/approvedBrands";
+import SpeechMicButton from "../components/SpeechMicButton";
 
 const defaultForm = {
   brand: "",
@@ -14,7 +15,8 @@ const defaultForm = {
   cost: "",
   price: "",
   location: "dupont",
-  vendorSource: "Street Commerce",
+  vendorSource: "",
+  consignmentPayoutPct: "",
 };
 
 const categoryTree = [
@@ -86,14 +88,8 @@ const locationOptions = [
   { label: "DuPont Store", value: "dupont" },
   { label: "Charlotte Store", value: "charlotte" },
 ];
+const LOCATION_STORAGE_KEY = "ui_location";
 
-const fallbackVendorOptions = [
-  "Street Commerce",
-  "Store Purchase",
-  "Consignment - Smith",
-  "Consignment - Carter",
-  "Consignment - Harper",
-];
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -175,6 +171,33 @@ const dedupeAdjacentWords = (value) => {
   return deduped.join(" ");
 };
 
+const extractConsignmentVendor = (value) => {
+  if (!value) {
+    return "";
+  }
+  const match = `${value}`.match(/^consignment\s*-\s*(.+)$/i);
+  return match ? match[1].trim() : "";
+};
+
+const resolveConsignmentVendor = async (vendorValue) => {
+  const extracted = extractConsignmentVendor(vendorValue);
+  if (!extracted) {
+    return vendorValue;
+  }
+  try {
+    const response = await fetch(
+      `/api/vendors?q=${encodeURIComponent(extracted)}`
+    );
+    if (!response.ok) {
+      return extracted;
+    }
+    const data = await response.json().catch(() => ({}));
+    return data?.match || extracted;
+  } catch (error) {
+    return extracted;
+  }
+};
+
 const getCategoryLeaf = (categoryPath) => {
   const parts = parseCategoryPath(categoryPath || "");
   return parts[parts.length - 1] || "";
@@ -213,57 +236,6 @@ const parseCategoryPath = (path) =>
 
 const buildCategoryPath = (parts) =>
   parts.filter(Boolean).join(" > ");
-
-const parseCsv = (content) => {
-  const rows = [];
-  let row = [];
-  let value = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const char = content[index];
-
-    if (char === '"') {
-      if (inQuotes && content[index + 1] === '"') {
-        value += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      row.push(value);
-      value = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && content[index + 1] === "\n") {
-        index += 1;
-      }
-      row.push(value);
-      if (row.some((cell) => cell.trim())) {
-        rows.push(row);
-      }
-      row = [];
-      value = "";
-      continue;
-    }
-
-    value += char;
-  }
-
-  if (value || row.length) {
-    row.push(value);
-    if (row.some((cell) => cell.trim())) {
-      rows.push(row);
-    }
-  }
-
-  return rows;
-};
 
 function ConditionControl({
   value,
@@ -343,6 +315,66 @@ function ShopifyPreview({
   form,
   locationLabel,
 }) {
+  const priceNum = parseFirstNumber(form.price);
+  const costNum = parseFirstNumber(form.cost);
+  const pctNum = parseFirstNumber(form.consignmentPayoutPct);
+  const isConsignment = pctNum !== null;
+  const roundToCents = (value) => Math.round(value * 100) / 100;
+  const vendorPayout = isConsignment
+    ? priceNum !== null
+      ? roundToCents(priceNum * 0.6)
+      : null
+    : 0;
+  const storeProfit = isConsignment
+    ? priceNum !== null
+      ? roundToCents(priceNum * 0.4)
+      : null
+    : priceNum !== null && costNum !== null
+      ? roundToCents(Math.max(priceNum - costNum, 0))
+      : null;
+  const purchaseProfit = !isConsignment ? storeProfit : null;
+  const marginPct =
+    purchaseProfit !== null && priceNum
+      ? Math.round((purchaseProfit / priceNum) * 100)
+      : null;
+  const storeCutPct =
+    isConsignment &&
+    typeof priceNum === "number" &&
+    priceNum > 0 &&
+    typeof storeProfit === "number"
+      ? Math.round((storeProfit / priceNum) * 100)
+      : 0;
+  const consignmentPctRaw = (() => {
+    if (!isConsignment) {
+      return null;
+    }
+    if (typeof pctNum === "number" && !Number.isNaN(pctNum)) {
+      return pctNum <= 1 ? pctNum * 100 : pctNum;
+    }
+    if (
+      typeof vendorPayout === "number" &&
+      typeof priceNum === "number" &&
+      priceNum > 0
+    ) {
+      return (vendorPayout / priceNum) * 100;
+    }
+    return null;
+  })();
+  const consignmentPct =
+    consignmentPctRaw === null || Number.isNaN(consignmentPctRaw)
+      ? null
+      : Math.round(consignmentPctRaw);
+  const formatMoneyValue = (value) => {
+    if (value === null || Number.isNaN(value)) {
+      return "--";
+    }
+    const normalized = Number.isInteger(value) ? `${value}` : value.toFixed(2);
+    return formatUSD(normalized);
+  };
+  const formatPercentValue = (value) =>
+    value === null || Number.isNaN(value) ? "--" : `${value}%`;
+  const costDisplay = isConsignment ? "$0" : formatUSD(form.cost) || "--";
+
   return (
     <aside className="intake-summary">
       <div className="summary-card product-preview">
@@ -385,9 +417,61 @@ function ShopifyPreview({
           <div>
             <span className="preview-label">Cost</span>
             <strong className="preview-value">
-              {formatUSD(form.cost) || "--"}
+              {costDisplay}
             </strong>
           </div>
+        </div>
+        <div
+          className="preview-profit"
+          style={
+            isConsignment
+              ? { gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }
+              : undefined
+          }
+        >
+          {isConsignment ? (
+            <>
+              <div>
+                <span className="preview-label">Vendor payout</span>
+                <strong className="preview-value">
+                  {formatMoneyValue(vendorPayout)}
+                </strong>
+              </div>
+              <div>
+                <span className="preview-label">Store profit</span>
+                <strong className="preview-value">
+                  {formatMoneyValue(storeProfit)}
+                </strong>
+              </div>
+              <div>
+                <span className="preview-label">Consignment %</span>
+                <strong className="preview-value">
+                  {formatPercentValue(consignmentPct)}
+                </strong>
+              </div>
+              <div>
+                <span className="preview-label">Store cut %</span>
+                <strong className="preview-value">
+                  {formatPercentValue(storeCutPct)}
+                </strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <span className="preview-label">Profit</span>
+                <strong className="preview-value">
+                  {formatMoneyValue(purchaseProfit)}
+                </strong>
+              </div>
+              <div>
+                <span className="preview-label">Margin</span>
+                <strong className="preview-value">
+                  {formatPercentValue(marginPct)}
+                </strong>
+              </div>
+            </>
+          )}
         </div>
       </div>
       <div className="summary-card checklist-card">
@@ -455,13 +539,12 @@ export default function Home() {
     category: "",
   });
   const [brandLocked, setBrandLocked] = useState(false);
-  const [vendorOptions, setVendorOptions] = useState(fallbackVendorOptions);
   const quickTotalSteps = 10;
 
   const itemNameRef = useRef(null);
   const brandInputRef = useRef(null);
-  const vendorInputRef = useRef(null);
   const quickItemDetailsRef = useRef(null);
+  const quickItemDetailsSelectionRef = useRef(null);
   const quickCategoryRef = useRef(null);
   const quickSizeRef = useRef(null);
   const quickDescriptionRef = useRef(null);
@@ -477,6 +560,35 @@ export default function Home() {
     () => categoryTree.map(normalizeCategoryNode),
     []
   );
+
+  useEffect(() => {
+    const selection = quickItemDetailsSelectionRef.current;
+    if (!selection) {
+      return;
+    }
+    quickItemDetailsSelectionRef.current = null;
+
+    const textarea = quickItemDetailsRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    try {
+      textarea.focus({ preventScroll: true });
+    } catch (error) {
+      try {
+        textarea.focus();
+      } catch (focusError) {
+        return;
+      }
+    }
+
+    try {
+      textarea.setSelectionRange(selection.start, selection.end);
+    } catch (rangeError) {
+      // ignore selection errors
+    }
+  }, [quickItemDetails]);
 
   const quickCategoryOptions = useMemo(() => {
     const options = [];
@@ -534,25 +646,6 @@ export default function Home() {
     return brandSuggestion.slice(form.brand.length);
   }, [brandSuggestion, form.brand]);
 
-  const vendorSuggestion = useMemo(() => {
-    if (!form.vendorSource) {
-      return "";
-    }
-    const normalized = form.vendorSource.toLowerCase();
-    return (
-      vendorOptions.find((vendor) =>
-        vendor.toLowerCase().startsWith(normalized)
-      ) || ""
-    );
-  }, [form.vendorSource, vendorOptions]);
-
-  const vendorGhostRemainder = useMemo(() => {
-    if (!vendorSuggestion) {
-      return "";
-    }
-    return vendorSuggestion.slice(form.vendorSource.length);
-  }, [vendorSuggestion, form.vendorSource]);
-
   const filteredQuickCategories = useMemo(() => {
     const query = quickCategoryQuery.trim().toLowerCase();
     if (!query) {
@@ -605,6 +698,22 @@ export default function Home() {
   }, [conditionNumber]);
 
   useEffect(() => {
+    const savedLocation = localStorage.getItem(LOCATION_STORAGE_KEY) ?? "";
+    if (!savedLocation) {
+      return;
+    }
+    const isKnown = locationOptions.some(
+      (option) => option.value === savedLocation
+    );
+    if (!isKnown) {
+      return;
+    }
+    setForm((prev) =>
+      prev.location === savedLocation ? prev : { ...prev, location: savedLocation }
+    );
+  }, []);
+
+  useEffect(() => {
     if (quickMode) {
       setBrandLocked(false);
       setQuickStep(0);
@@ -651,42 +760,6 @@ export default function Home() {
       prev >= filteredQuickCategories.length ? 0 : prev
     );
   }, [filteredQuickCategories]);
-
-  useEffect(() => {
-    const sheetId = process.env.NEXT_PUBLIC_VENDOR_SHEET_ID;
-    if (!sheetId) {
-      return;
-    }
-    const sheetName = process.env.NEXT_PUBLIC_VENDOR_SHEET_TAB || "Sheet1";
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
-      sheetName
-    )}`;
-
-    fetch(url)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Unable to fetch vendor sheet");
-        }
-        return response.text();
-      })
-      .then((text) => {
-        const rows = parseCsv(text);
-        const vendors = rows
-          .flat()
-          .map((cell) => cell.trim())
-          .filter(Boolean);
-        if (vendors.length) {
-          const uniqueVendors = Array.from(new Set(vendors));
-          if (!uniqueVendors.includes(defaultForm.vendorSource)) {
-            uniqueVendors.unshift(defaultForm.vendorSource);
-          }
-          setVendorOptions(uniqueVendors);
-        }
-      })
-      .catch(() => {
-        setVendorOptions(fallbackVendorOptions);
-      });
-  }, []);
 
   const focusQuickStep = (step) => {
     const focusMap = {
@@ -831,6 +904,19 @@ export default function Home() {
         if (isEmptyValue(value)) {
           return;
         }
+        if (key === "location") {
+          return;
+        }
+        if (key === "vendor") {
+          next.vendorSource = value;
+          return;
+        }
+        if (key === "consignmentPayoutPct") {
+          if (isEmptyValue(prev.consignmentPayoutPct)) {
+            next.consignmentPayoutPct = `${value}`;
+          }
+          return;
+        }
         if (key === "brand") {
           if (isEmptyValue(prev.brand)) {
             next.brand = value;
@@ -885,11 +971,28 @@ export default function Home() {
         throw new Error(data?.error || "Unable to parse item details");
       }
       const parsedFields = await response.json();
-      mergeParsedFields(parsedFields);
-      if (parsedFields.categoryPath) {
-        setQuickCategoryQuery(parsedFields.categoryPath);
+      const payoutNum = parseFirstNumber(parsedFields.consignmentPayoutPct);
+      const costNum = parseFirstNumber(parsedFields.cost);
+      const isConsignment = payoutNum !== null;
+      const needsDefaultVendor =
+        isEmptyValue(parsedFields.vendor) &&
+        !isConsignment &&
+        costNum !== null &&
+        costNum > 0;
+      const vendorCandidate = needsDefaultVendor
+        ? "Street Commerce"
+        : parsedFields.vendor;
+      const resolvedVendor = await resolveConsignmentVendor(vendorCandidate);
+      const resolvedFields =
+        resolvedVendor === vendorCandidate &&
+        vendorCandidate === parsedFields.vendor
+          ? parsedFields
+          : { ...parsedFields, vendor: resolvedVendor };
+      mergeParsedFields(resolvedFields);
+      if (resolvedFields.categoryPath) {
+        setQuickCategoryQuery(resolvedFields.categoryPath);
         const matchIndex = quickCategoryOptions.findIndex(
-          (option) => option.path === parsedFields.categoryPath
+          (option) => option.path === resolvedFields.categoryPath
         );
         if (matchIndex >= 0) {
           setQuickCategoryIndex(matchIndex);
@@ -913,35 +1016,17 @@ export default function Home() {
     }
   };
 
-  const handleQuickVendorKeyDown = (event) => {
-    if (event.key !== "Enter" && event.key !== "Tab") {
-      return;
-    }
-
-    if (event.key === "Tab") {
-      if (vendorSuggestion) {
-        event.preventDefault();
-        setForm((prev) => ({ ...prev, vendorSource: vendorSuggestion }));
-      }
-      return;
-    }
-
-    event.preventDefault();
-    if (vendorSuggestion) {
-      setForm((prev) => ({ ...prev, vendorSource: vendorSuggestion }));
-    }
-    handleQuickAdvance(9);
-  };
-
   const handleQuickLocationKeyDown = (event) => {
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
       event.preventDefault();
       setForm((prev) => ({ ...prev, location: "charlotte" }));
+      localStorage.setItem(LOCATION_STORAGE_KEY, "charlotte");
       return;
     }
     if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
       event.preventDefault();
       setForm((prev) => ({ ...prev, location: "dupont" }));
+      localStorage.setItem(LOCATION_STORAGE_KEY, "dupont");
       return;
     }
     if (event.key === "Enter") {
@@ -963,22 +1048,16 @@ export default function Home() {
     setForm((prev) => ({ ...prev, categoryPath: option.path }));
   };
 
+  const handleLocationSelect = (value) => {
+    setForm((prev) => ({ ...prev, location: value }));
+    localStorage.setItem(LOCATION_STORAGE_KEY, value);
+  };
+
   const handleBrandEdit = () => {
     setBrandLocked(false);
     requestAnimationFrame(() => {
       brandInputRef.current?.focus();
     });
-  };
-
-  const handleVendorKeyDown = (event) => {
-    if (event.key !== "Enter" && event.key !== "Tab") {
-      return;
-    }
-    event.preventDefault();
-
-    if (vendorSuggestion) {
-      setForm((prev) => ({ ...prev, vendorSource: vendorSuggestion }));
-    }
   };
 
   const handleCategoryOpen = () => {
@@ -1091,11 +1170,24 @@ export default function Home() {
   };
 
   return (
-    <main className="intake-shell">
-      <header className="intake-header">
-        <div>
-          <h1>Inventory Intake</h1>
-          <span className="intake-subtitle">Street Commerce</span>
+    <main className="intake-shell cardTight">
+      <header className="intakeHeaderBar">
+        <div />
+        <div className="intakeHeaderCenter">
+          <h1 className="intakeTitle">Inventory Intake</h1>
+          <div className="intakeSub">STREET COMMERCE</div>
+        </div>
+
+        <div className="intakeHeaderRight">
+          <label className="quickModeToggle">
+            <input
+              className="quickModeCheckbox"
+              type="checkbox"
+              checked={quickMode}
+              onChange={(e) => setQuickMode(e.target.checked)}
+            />
+            <span>Quick mode</span>
+          </label>
         </div>
       </header>
 
@@ -1106,26 +1198,6 @@ export default function Home() {
         >
           {quickMode ? (
             <section className="intake-section quick-mode-card">
-              <div className="section-heading">
-                <div>
-                  <h2>Start with brand</h2>
-                  <p>
-                    Tab autocompletes. Enter confirms and advances through each
-                    step.
-                  </p>
-                </div>
-                <div className="quick-mode-toggle">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={quickMode}
-                      onChange={(event) => setQuickMode(event.target.checked)}
-                    />
-                    Quick mode
-                  </label>
-                </div>
-              </div>
-
               <div className="quick-progress">
                 Step {quickProgressStep} of {quickTotalSteps}
               </div>
@@ -1154,9 +1226,6 @@ export default function Home() {
                       readOnly={brandLocked}
                     />
                   </fieldset>
-                  <span className="quickHint">
-                    Tab to autocomplete · Enter to continue
-                  </span>
                 </div>
 
                 <div
@@ -1172,27 +1241,75 @@ export default function Home() {
                     disabled={quickStepLocks.itemDetails}
                     className="quickStepFieldset"
                   >
-                    <textarea
-                      ref={quickItemDetailsRef}
-                      value={quickItemDetails}
-                      onChange={(event) => setQuickItemDetails(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          if (itemDetailsStatus !== "loading") {
-                            handleQuickItemDetailsSubmit();
+                    <div className="textareaWrap">
+                      <textarea
+                        className="quickItemDetails fieldTextarea fieldTextareaWithMic"
+                        ref={quickItemDetailsRef}
+                        value={quickItemDetails}
+                        onChange={(event) =>
+                          setQuickItemDetails(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            if (itemDetailsStatus !== "loading") {
+                              handleQuickItemDetailsSubmit();
+                            }
+                            return;
                           }
-                          return;
-                        }
-                        if (itemDetailsStatus === "loading") {
-                          event.preventDefault();
-                          return;
-                        }
-                      }}
-                      className="quickItemDetails"
-                      rows={6}
-                      placeholder="Pony hair Ramones sneakers size 13 cost 100 sell 900 9/10"
-                    />
+                          if (itemDetailsStatus === "loading") {
+                            event.preventDefault();
+                            return;
+                          }
+                        }}
+                        rows={6}
+                        placeholder="Pony hair Ramones sneakers size 13 cost 100 sell 900 9/10"
+                      />
+                      <SpeechMicButton
+                        className="micButton"
+                        onText={(t) => {
+                          const transcript = String(t || "").trim();
+                          if (!transcript) {
+                            return;
+                          }
+
+                          const textarea = quickItemDetailsRef.current;
+                          const selectionStart = textarea?.selectionStart;
+                          const selectionEnd = textarea?.selectionEnd;
+
+                          setQuickItemDetails((prev) => {
+                            const currentValue = String(prev || "");
+                            if (
+                              typeof selectionStart !== "number" ||
+                              typeof selectionEnd !== "number"
+                            ) {
+                              return currentValue
+                                ? `${currentValue}\n${transcript}`
+                                : transcript;
+                            }
+
+                            const before = currentValue.slice(0, selectionStart);
+                            const after = currentValue.slice(selectionEnd);
+                            const needsLeadingSpace =
+                              before &&
+                              !/\s$/.test(before) &&
+                              !/^[\s,.;:!?]/.test(transcript);
+                            const insertion = `${
+                              needsLeadingSpace ? " " : ""
+                            }${transcript}`;
+                            const nextValue = `${before}${insertion}${after}`;
+                            const nextCaret = before.length + insertion.length;
+
+                            quickItemDetailsSelectionRef.current = {
+                              start: nextCaret,
+                              end: nextCaret,
+                            };
+
+                            return nextValue;
+                          });
+                        }}
+                      />
+                    </div>
                   </fieldset>
                   {itemDetailsStatus === "loading" && (
                     <span className="quickHint">{itemDetailsMessage}</span>
@@ -1217,6 +1334,7 @@ export default function Home() {
                   >
                     <div className="quick-category">
                       <input
+                        className="fieldInput"
                         ref={quickCategoryRef}
                         value={quickCategoryQuery}
                         onChange={(event) => {
@@ -1280,6 +1398,7 @@ export default function Home() {
                     className="quickStepFieldset"
                   >
                     <input
+                      className="fieldInput"
                       ref={quickSizeRef}
                       name="size"
                       value={form.size}
@@ -1309,6 +1428,7 @@ export default function Home() {
                     className="quickStepFieldset"
                   >
                     <textarea
+                      className="fieldTextarea"
                       ref={quickDescriptionRef}
                       name="shopifyDescription"
                       value={form.shopifyDescription}
@@ -1317,9 +1437,6 @@ export default function Home() {
                       placeholder="Short description for the listing."
                     />
                   </fieldset>
-                  <span className="quickHint">
-                    Enter to continue. Ctrl+Enter for a new line.
-                  </span>
                 </div>
 
                 <div
@@ -1368,6 +1485,7 @@ export default function Home() {
                     className="quickStepFieldset"
                   >
                     <input
+                      className="fieldInput"
                       ref={quickCostRef}
                       name="cost"
                       value={formatUSD(form.cost)}
@@ -1397,6 +1515,7 @@ export default function Home() {
                     className="quickStepFieldset"
                   >
                     <input
+                      className="fieldInput"
                       ref={quickPriceRef}
                       name="price"
                       value={formatUSD(form.price)}
@@ -1425,27 +1544,22 @@ export default function Home() {
                     disabled={quickStepLocks.vendor}
                     className="quickStepFieldset"
                   >
-                    <div className="spotlight-field compact">
-                      <div className="spotlight-ghost" aria-hidden="true">
-                        <span className="ghost-typed">
-                          {form.vendorSource}
-                        </span>
-                        <span>{vendorGhostRemainder}</span>
-                      </div>
-                      <input
-                        ref={quickVendorRef}
-                        name="vendorSource"
-                        value={form.vendorSource}
-                        onChange={handleChange}
-                        onKeyDown={handleQuickVendorKeyDown}
-                        placeholder="Search vendors"
-                        autoComplete="off"
-                      />
-                    </div>
+                    <input
+                      className="fieldInput"
+                      ref={quickVendorRef}
+                      name="vendorSource"
+                      value={form.vendorSource}
+                      onChange={handleChange}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleQuickAdvance(9);
+                        }
+                      }}
+                      placeholder="Vendor"
+                      autoComplete="off"
+                    />
                   </fieldset>
-                  <span className="quickHint">
-                    Tab to autocomplete · Enter to continue
-                  </span>
                 </div>
 
                 <div
@@ -1477,10 +1591,7 @@ export default function Home() {
                               : undefined
                           }
                           onClick={() =>
-                            setForm((prev) => ({
-                              ...prev,
-                              location: option.value,
-                            }))
+                            handleLocationSelect(option.value)
                           }
                         >
                           {option.label}
@@ -1488,7 +1599,6 @@ export default function Home() {
                       ))}
                     </div>
                   </fieldset>
-                  <span className="quickHint">Enter to save</span>
                 </div>
 
                 {quickStep >= 10 && (
@@ -1555,21 +1665,10 @@ export default function Home() {
           ) : (
             <>
               <section className="intake-section spotlight-section">
-                <div className="section-heading">
-                  <div>
-                    <h2>Start with brand</h2>
-                    <p>Type to autocomplete. Enter locks the brand and moves on.</p>
-                  </div>
-                  <div className="quick-mode-toggle">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={quickMode}
-                        onChange={(event) => setQuickMode(event.target.checked)}
-                      />
-                      Quick mode
-                    </label>
-                    {brandLocked && (
+                {brandLocked && (
+                  <div className="section-heading">
+                    <div />
+                    <div className="quick-mode-toggle">
                       <button
                         type="button"
                         className="text-button"
@@ -1577,9 +1676,9 @@ export default function Home() {
                       >
                         Edit
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
                 <BrandSpotlightInput
                   value={form.brand}
                   ghostRemainder={ghostRemainder}
@@ -1599,8 +1698,9 @@ export default function Home() {
                 </div>
                 <div className="field-grid three">
                   <label className="field">
-                    <span>Item name</span>
+                    <span className="fieldLabel">Item name</span>
                     <input
+                      className="fieldInput"
                       ref={itemNameRef}
                       name="itemName"
                       value={form.itemName}
@@ -1609,7 +1709,7 @@ export default function Home() {
                     />
                   </label>
                   <label className="field">
-                    <span>Category</span>
+                    <span className="fieldLabel">Category</span>
                     <div className="category-picker">
                       <button
                         type="button"
@@ -1716,8 +1816,9 @@ export default function Home() {
                     </div>
                   </label>
                   <label className="field">
-                    <span>Item size</span>
+                    <span className="fieldLabel">Item size</span>
                     <input
+                      className="fieldInput"
                       name="size"
                       value={form.size}
                       onChange={handleChange}
@@ -1735,8 +1836,9 @@ export default function Home() {
                 </div>
                 <div className="field-grid single">
                   <label className="field">
-                    <span>Shopify description</span>
+                    <span className="fieldLabel">Shopify description</span>
                     <textarea
+                      className="fieldTextarea"
                       name="shopifyDescription"
                       value={form.shopifyDescription}
                       onChange={handleChange}
@@ -1744,7 +1846,7 @@ export default function Home() {
                     />
                   </label>
                   <div className="field condition-field">
-                    <span>Item condition</span>
+                    <span className="fieldLabel">Item condition</span>
                     <ConditionControl
                       value={form.condition}
                       conditionNumber={conditionNumber}
@@ -1763,8 +1865,9 @@ export default function Home() {
                 </div>
                 <div className="field-grid three">
                   <label className="field">
-                    <span>Intake cost</span>
+                    <span className="fieldLabel">Intake cost</span>
                     <input
+                      className="fieldInput"
                       name="cost"
                       value={formatUSD(form.cost)}
                       onChange={handleCurrencyChange}
@@ -1772,8 +1875,9 @@ export default function Home() {
                     />
                   </label>
                   <label className="field">
-                    <span>Sell price</span>
+                    <span className="fieldLabel">Sell price</span>
                     <input
+                      className="fieldInput"
                       name="price"
                       value={formatUSD(form.price)}
                       onChange={handleCurrencyChange}
@@ -1781,22 +1885,15 @@ export default function Home() {
                     />
                   </label>
                   <label className="field">
-                    <span>Consignee / Vendor</span>
-                    <div className="spotlight-field compact">
-                      <div className="spotlight-ghost" aria-hidden="true">
-                        <span className="ghost-typed">{form.vendorSource}</span>
-                        <span>{vendorGhostRemainder}</span>
-                      </div>
-                      <input
-                        ref={vendorInputRef}
-                        name="vendorSource"
-                        value={form.vendorSource}
-                        onChange={handleChange}
-                        onKeyDown={handleVendorKeyDown}
-                        placeholder="Search vendors"
-                        autoComplete="off"
-                      />
-                    </div>
+                    <span className="fieldLabel">Consignee / Vendor</span>
+                    <input
+                      className="fieldInput"
+                      name="vendorSource"
+                      value={form.vendorSource}
+                      onChange={handleChange}
+                      placeholder="Vendor"
+                      autoComplete="off"
+                    />
                   </label>
                 </div>
               </section>
@@ -1816,7 +1913,7 @@ export default function Home() {
                         form.location === option.value ? "is-selected" : undefined
                       }
                       onClick={() =>
-                        setForm((prev) => ({ ...prev, location: option.value }))
+                        handleLocationSelect(option.value)
                       }
                     >
                       {option.label}
