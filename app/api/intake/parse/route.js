@@ -118,6 +118,20 @@ const normalizeShopifyDescription = (value) => {
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const bannedShopifyDescriptionWords = [
+  "stylish",
+  "great",
+  "amazing",
+  "beautiful",
+  "stunning",
+  "premium",
+  "luxury",
+  "perfect",
+  "incredible",
+  "iconic",
+  "must-have",
+];
+
 const sanitizeShopifyDescription = (value, { brand, itemName }) => {
   if (!value) {
     return "";
@@ -146,6 +160,17 @@ const sanitizeShopifyDescription = (value, { brand, itemName }) => {
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
   return cleaned;
+};
+
+const stripBannedShopifyDescriptionWords = (value) => {
+  if (!value) {
+    return "";
+  }
+  const bannedPattern = bannedShopifyDescriptionWords
+    .map((word) => escapeRegex(word))
+    .join("|");
+  const regex = new RegExp(`\\b(?:${bannedPattern})\\b`, "gi");
+  return value.replace(regex, "").replace(/[ \t]{2,}/g, " ").trim();
 };
 
 export async function POST(request) {
@@ -177,6 +202,12 @@ export async function POST(request) {
       "shopifyDescription must ONLY include notes not represented by structured fields.",
       "Do not include brand, itemName, categoryPath, size, condition score, cost, price, vendor, or location.",
       "If there are no additional notes, return an empty string for shopifyDescription.",
+      "Tone must be neutral, factual, and professional.",
+      "No hype words or opinions. Do not use subjective adjectives like: stylish, great, amazing, beautiful, stunning, premium, luxury, perfect, incredible, iconic, must-have.",
+      "Do not use exclamation points.",
+      "Do not address the reader (no 'you' or 'your').",
+      "Keep it concise: 1–2 sentences max.",
+      "Only include factual notes not already captured by structured fields (damage, material, finish/wash, special construction, included accessories).",
       "Use a single short paragraph or 1–2 bullet points max with correct spelling and grammar.",
       'Example input: "Rick Owens, pony hair, Ramone, size 12, sneaker"',
       'Possible output: {"brand":"Rick Owens","itemName":"Pony Hair Ramones","categoryPath":"Mens > Shoes > Sneakers","size":"12","condition":"8","cost":"300","price":"900","location":"","vendorSource":""}',
@@ -218,11 +249,13 @@ export async function POST(request) {
       brand: gptResult.data.brand.trim(),
       itemName: dedupeAdjacentWords(gptResult.data.itemName.trim()),
       categoryPath: gptResult.data.categoryPath.trim(),
-      shopifyDescription: normalizeShopifyDescription(
-        sanitizeShopifyDescription(gptResult.data.shopifyDescription, {
-          brand: gptResult.data.brand,
-          itemName: gptResult.data.itemName,
-        })
+      shopifyDescription: stripBannedShopifyDescriptionWords(
+        normalizeShopifyDescription(
+          sanitizeShopifyDescription(gptResult.data.shopifyDescription, {
+            brand: gptResult.data.brand,
+            itemName: gptResult.data.itemName,
+          })
+        )
       ),
       size: gptResult.data.size.trim(),
       condition: normalizeConditionInput(gptResult.data.condition),
