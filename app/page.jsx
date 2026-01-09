@@ -363,35 +363,66 @@ function ShopifyPreview({
         <p className="preview-description">{descriptionPreview}</p>
         <div className="preview-grid">
           <div>
-            <span>Category</span>
-            <strong>{form.categoryPath || "Select a category"}</strong>
+            <span className="preview-label">Category</span>
+            <strong className="preview-value">
+              {form.categoryPath || "Select a category"}
+            </strong>
           </div>
           <div>
-            <span>Size</span>
-            <strong>{form.size || "--"}</strong>
+            <span className="preview-label">Size</span>
+            <strong className="preview-value">{form.size || "--"}</strong>
           </div>
           <div>
-            <span>Vendor</span>
-            <strong>{form.vendorSource || "--"}</strong>
+            <span className="preview-label">Vendor</span>
+            <strong className="preview-value">
+              {form.vendorSource || "--"}
+            </strong>
           </div>
           <div>
-            <span>Location</span>
-            <strong>{locationLabel || "--"}</strong>
+            <span className="preview-label">Location</span>
+            <strong className="preview-value">{locationLabel || "--"}</strong>
           </div>
           <div>
-            <span>Cost</span>
-            <strong>{formatUSD(form.cost) || "--"}</strong>
+            <span className="preview-label">Cost</span>
+            <strong className="preview-value">
+              {formatUSD(form.cost) || "--"}
+            </strong>
           </div>
         </div>
       </div>
       <div className="summary-card checklist-card">
-        <span className="summary-label checklist-title">
-          Each listing requires:
+        <span className="preview-label checklist-title">
+          Each listing requires
         </span>
-        <p className="checklist-body">
-          Brand, Category, Size, Description, Condition, Intake cost, Sale
-          price, Vendor, Location
-        </p>
+        <ul className="checklist-list">
+          <li>
+            <strong className="preview-value">Brand</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Category</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Size</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Description</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Condition</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Intake cost</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Sale price</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Vendor</strong>
+          </li>
+          <li>
+            <strong className="preview-value">Location</strong>
+          </li>
+        </ul>
       </div>
       {preview && (
         <details className="summary-code">
