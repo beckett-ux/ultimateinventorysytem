@@ -687,7 +687,13 @@ textarea {
   color: #64748b;
 }
 
-.preview-grid strong {
+.preview-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.preview-grid strong,
+.preview-value {
   color: #0f172a;
   display: block;
   margin-top: 4px;
@@ -709,11 +715,17 @@ textarea {
   text-transform: none;
 }
 
-.checklist-body {
+.checklist-list {
   margin: 0;
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.5;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.checklist-list .preview-value {
+  display: inline;
+  margin-top: 0;
 }
 
 .summary-card strong {
