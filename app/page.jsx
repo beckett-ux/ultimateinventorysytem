@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { approvedBrands } from "@/lib/approvedBrands";
 import SpeechMicButton from "../components/SpeechMicButton";
@@ -540,6 +541,76 @@ export default function Home() {
   });
   const [brandLocked, setBrandLocked] = useState(false);
   const quickTotalSteps = 10;
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const shop = (searchParams.get("shop") || "").trim().toLowerCase();
+  const [shopDraft, setShopDraft] = useState(shop);
+  const [shopGateError, setShopGateError] = useState("");
+  const [shopInstalled, setShopInstalled] = useState(null);
+  const [shopInstallCheckStatus, setShopInstallCheckStatus] = useState("idle");
+  const [shopInstallCheckError, setShopInstallCheckError] = useState("");
+
+  useEffect(() => {
+    setShopDraft(shop);
+    setShopGateError("");
+    setShopInstalled(null);
+  }, [shop]);
+
+  useEffect(() => {
+    if (!shop) {
+      setShopInstallCheckStatus("idle");
+      setShopInstallCheckError("");
+      setShopInstalled(null);
+      return;
+    }
+
+    let cancelled = false;
+    setShopInstallCheckStatus("loading");
+    setShopInstallCheckError("");
+    setShopInstalled(null);
+
+    fetch(`/api/shopify/installed?shop=${encodeURIComponent(shop)}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!response.ok) {
+          setShopInstalled(false);
+          setShopInstallCheckStatus("error");
+          setShopInstallCheckError(
+            data?.error || "Unable to check Shopify install status"
+          );
+          return;
+        }
+
+        setShopInstalled(Boolean(data?.installed));
+        setShopInstallCheckStatus("success");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setShopInstalled(false);
+        setShopInstallCheckStatus("error");
+        setShopInstallCheckError(
+          error?.message || "Unable to check Shopify install status"
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shop]);
+
+  const handleShopSubmit = (event) => {
+    event.preventDefault();
+    const normalized = (shopDraft || "").trim().toLowerCase();
+    if (!normalized) {
+      setShopGateError("Enter your Shopify shop domain.");
+      return;
+    }
+
+    router.push(`/?shop=${encodeURIComponent(normalized)}`);
+  };
 
   const itemNameRef = useRef(null);
   const brandInputRef = useRef(null);
@@ -1168,6 +1239,117 @@ export default function Home() {
     vendor: isQuickStepLocked(8),
     location: isQuickStepLocked(9),
   };
+
+  if (!shop) {
+    return (
+      <main className="intake-shell cardTight">
+        <header className="intakeHeaderBar">
+          <div />
+          <div className="intakeHeaderCenter">
+            <h1 className="intakeTitle">Inventory Intake</h1>
+            <div className="intakeSub">STREET COMMERCE</div>
+          </div>
+          <div />
+        </header>
+
+        <form className="intake-form" onSubmit={handleShopSubmit}>
+          <section className="intake-section">
+            <div className="section-heading">
+              <div>
+                <h2>Choose a shop</h2>
+                <p className="hint">Enter your Shopify domain to continue.</p>
+              </div>
+            </div>
+
+            <div className="field">
+              <label className="fieldLabel" htmlFor="shop-domain">
+                Shop domain
+              </label>
+              <input
+                id="shop-domain"
+                className="fieldInput"
+                value={shopDraft}
+                onChange={(event) => setShopDraft(event.target.value)}
+                placeholder="example.myshopify.com"
+                autoComplete="off"
+              />
+            </div>
+
+            {shopGateError && <div className="error">{shopGateError}</div>}
+
+            <button type="submit" className="primary-button">
+              Continue
+            </button>
+          </section>
+        </form>
+      </main>
+    );
+  }
+
+  if (shopInstalled === null && shopInstallCheckStatus === "loading") {
+    return (
+      <main className="intake-shell cardTight">
+        <header className="intakeHeaderBar">
+          <div />
+          <div className="intakeHeaderCenter">
+            <h1 className="intakeTitle">Inventory Intake</h1>
+            <div className="intakeSub">STREET COMMERCE</div>
+          </div>
+          <div />
+        </header>
+
+        <section className="intake-section">
+          <div className="section-heading">
+            <div>
+              <h2>Checking shop connection</h2>
+              <p className="hint">{shop}</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (shopInstalled === false) {
+    const installUrl = `/api/shopify/auth?shop=${encodeURIComponent(shop)}`;
+    return (
+      <main className="intake-shell cardTight">
+        <header className="intakeHeaderBar">
+          <div />
+          <div className="intakeHeaderCenter">
+            <h1 className="intakeTitle">Inventory Intake</h1>
+            <div className="intakeSub">STREET COMMERCE</div>
+          </div>
+          <div />
+        </header>
+
+        <section className="intake-section">
+          <div className="section-heading">
+            <div>
+              <h2>Connect Shopify</h2>
+              <p className="hint">{shop}</p>
+            </div>
+          </div>
+
+          {shopInstallCheckError && (
+            <div className="error">{shopInstallCheckError}</div>
+          )}
+
+          <a className="primary-button" href={installUrl}>
+            Install Shopify app
+          </a>
+
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => router.push("/")}
+          >
+            Use a different shop
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="intake-shell cardTight">
