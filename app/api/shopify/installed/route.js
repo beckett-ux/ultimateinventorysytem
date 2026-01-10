@@ -4,11 +4,13 @@ export const runtime = "nodejs";
 
 const isValidShopDomain = (shop) =>
   /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shop);
+const sanitizeShopDomain = (shop) =>
+  (shop || "").trim().toLowerCase().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
 
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const shop = (searchParams.get("shop") || "").trim().toLowerCase();
+    const shop = sanitizeShopDomain(searchParams.get("shop"));
 
     if (!shop) {
       return NextResponse.json(
@@ -19,6 +21,15 @@ export async function GET(request) {
 
     if (!isValidShopDomain(shop)) {
       return NextResponse.json({ error: "Invalid `shop` domain" }, { status: 400 });
+    }
+
+    const envShopDomain = sanitizeShopDomain(process.env.SHOPIFY_SHOP_DOMAIN);
+    const envAdminToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+    if (envShopDomain && envAdminToken && envShopDomain === shop) {
+      return NextResponse.json(
+        { installed: true, mode: "admin_token" },
+        { status: 200 }
+      );
     }
 
     const { getShopAccessToken } = await import("@/lib/db");
