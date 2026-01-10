@@ -29,6 +29,27 @@
 - Create a product from a saved intake row via `POST /api/shopify/create-product` with body `{ "inventoryItemId": <id> }`. Missing env vars return a 501-style JSON error explaining what to set.
 - In the UI, save an intake and use the **Create in Shopify** button in Recent saves to trigger product creation with the env-based credentials (no OAuth required for this path).
 
+## Shopify (OAuth install, multi-store)
+
+Required env vars:
+- `SHOPIFY_API_KEY`
+- `SHOPIFY_API_SECRET`
+- `SHOPIFY_SCOPES` (comma-separated, example: `write_products,read_locations`)
+- `SHOPIFY_APP_URL` (example: `http://localhost:3000` or your Vercel preview URL)
+- `DATABASE_URL` (sessions are stored in Postgres; see `db/schema.sql`)
+
+Shopify Partners settings (per environment):
+- **App URL**
+  - Local: `http://localhost:3000`
+  - Vercel preview: `https://<your-preview-domain>`
+- **Allowed redirection URL(s)**
+  - Local: `http://localhost:3000/api/shopify/callback`
+  - Vercel preview: `https://<your-preview-domain>/api/shopify/callback`
+
+Install flow:
+- Visit `GET /api/shopify/auth?shop=<your-dev-store>.myshopify.com`
+- After install, the app stores the OAuth session in Postgres (`shopify_sessions`) and upserts the shop access token into `shops`.
+
 ## Troubleshooting
 
 - If Postgres connections fail with `unrecognized configuration parameter "schema"`, remove `?schema=public` from `DATABASE_URL` (it breaks `postgres`/postgres.js connections).
