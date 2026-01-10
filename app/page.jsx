@@ -1,6 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
+function LegacyIntakeLink() {
+  const searchParams = useSearchParams();
+  const legacyQuery = searchParams.toString();
+  const legacyHref = legacyQuery ? `/intake?${legacyQuery}` : "/intake";
+
+  return (
+    <a href={legacyHref} style={{ color: "#2563eb" }}>
+      /intake
+    </a>
+  );
+}
 
 export default function HomePage() {
   const [title, setTitle] = useState("");
@@ -50,9 +63,15 @@ export default function HomePage() {
       <h1 style={{ marginBottom: "1rem" }}>Inventory Intake</h1>
       <p style={{ marginTop: 0, marginBottom: "1rem", color: "#555" }}>
         Legacy UI available at{" "}
-        <a href="/intake" style={{ color: "#2563eb" }}>
-          /intake
-        </a>
+        <Suspense
+          fallback={
+            <a href="/intake" style={{ color: "#2563eb" }}>
+              /intake
+            </a>
+          }
+        >
+          <LegacyIntakeLink />
+        </Suspense>
         .
       </p>
 
