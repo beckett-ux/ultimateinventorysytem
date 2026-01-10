@@ -61,3 +61,20 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Shopify OAuth sessions (used by @shopify/shopify-app-session-storage-postgresql).
+CREATE TABLE IF NOT EXISTS shopify_sessions (
+  id varchar(255) NOT NULL PRIMARY KEY,
+  shop varchar(255) NOT NULL,
+  state varchar(255) NOT NULL,
+  "isOnline" boolean NOT NULL,
+  scope varchar(255),
+  expires integer,
+  "onlineAccessInfo" varchar(255),
+  "accessToken" varchar(255)
+);
+
+-- Tracks storage migrations for the Shopify session adapter.
+CREATE TABLE IF NOT EXISTS shopify_sessions_migrations (
+  migration_name varchar(255) NOT NULL PRIMARY KEY
+);
+
