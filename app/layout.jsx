@@ -1,4 +1,5 @@
 import "./globals.css";
+import ShopifyAppBridgeProvider from "./shopify-app-bridge-provider";
 
 export const metadata = {
   title: "Inventory Intake",
@@ -8,7 +9,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ShopifyAppBridgeProvider>{children}</ShopifyAppBridgeProvider>
+      </body>
     </html>
   );
 }
