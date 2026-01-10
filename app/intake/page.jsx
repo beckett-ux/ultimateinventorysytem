@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { approvedBrands } from "@/lib/approvedBrands";
+import { navigateOutsideIframe } from "@/lib/navigateOutsideIframe";
 import SpeechMicButton from "@/components/SpeechMicButton";
 
 const buildShopifyAuthUrl = (shopDomain) => {
@@ -733,7 +734,7 @@ export default function Home() {
       return;
     }
 
-    window.location.replace(buildShopifyAuthUrl(shop));
+    navigateOutsideIframe(buildShopifyAuthUrl(shop), { replace: true });
   }, [shop, shopInstallCheckStatus, shopInstalled]);
 
   const handleShopSubmit = (event) => {
@@ -1608,7 +1609,14 @@ export default function Home() {
               </div>
             </div>
 
-            <a className="primary-button" href={installUrl}>
+            <a
+              className="primary-button"
+              href={installUrl}
+              onClick={(event) => {
+                event.preventDefault();
+                navigateOutsideIframe(installUrl);
+              }}
+            >
               Continue to Shopify
             </a>
 
@@ -1656,7 +1664,14 @@ export default function Home() {
             <div className="error">{shopInstallCheckError}</div>
           )}
 
-          <a className="primary-button" href={installUrl}>
+          <a
+            className="primary-button"
+            href={installUrl}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateOutsideIframe(installUrl);
+            }}
+          >
             Install Shopify app
           </a>
 

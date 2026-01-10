@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo } from "react";
 
+import { navigateOutsideIframe } from "@/lib/navigateOutsideIframe";
+
 export default function ShopifyAuthRedirect({ shop, returnTo = "/app" }) {
   const installUrl = useMemo(() => {
     const url = new URL("/api/shopify/auth", window.location.origin);
@@ -12,8 +14,7 @@ export default function ShopifyAuthRedirect({ shop, returnTo = "/app" }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const target = window.top || window;
-    target.location.assign(installUrl);
+    navigateOutsideIframe(installUrl);
   }, [installUrl]);
 
   return (
@@ -23,7 +24,15 @@ export default function ShopifyAuthRedirect({ shop, returnTo = "/app" }) {
         Redirecting to Shopify install.
       </p>
       <p style={{ marginTop: "1rem" }}>
-        <a href={installUrl}>Continue</a>
+        <a
+          href={installUrl}
+          onClick={(event) => {
+            event.preventDefault();
+            navigateOutsideIframe(installUrl);
+          }}
+        >
+          Continue
+        </a>
       </p>
     </main>
   );
