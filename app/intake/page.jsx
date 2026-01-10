@@ -524,10 +524,12 @@ export default function Home() {
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
+  const [savedId, setSavedId] = useState(null);
   const [quickMode, setQuickMode] = useState(true);
   const [quickStep, setQuickStep] = useState(0);
   const [quickStatus, setQuickStatus] = useState("idle");
   const [quickError, setQuickError] = useState(null);
+  const [quickSavedId, setQuickSavedId] = useState(null);
   const [quickItemDetails, setQuickItemDetails] = useState("");
   const [itemDetailsStatus, setItemDetailsStatus] = useState("idle");
   const [itemDetailsMessage, setItemDetailsMessage] = useState("");
@@ -1173,19 +1175,68 @@ export default function Home() {
     setForm((prev) => ({ ...prev, [name]: parseMoney(value) }));
   };
 
-  const validateIntake = async () => {
-    const response = await fetch("/api/intake/validate", {
+  const buildNotes = () => {
+    const lines = [];
+    const description = form.shopifyDescription?.trim();
+    if (description) {
+      lines.push(`Description: ${description}`);
+    }
+    const size = form.size?.trim();
+    if (size) {
+      lines.push(`Size: ${size}`);
+    }
+    const cost = parseFirstNumber(form.cost);
+    if (typeof cost === "number" && !Number.isNaN(cost) && cost > 0) {
+      lines.push(`Cost: $${cost}`);
+    }
+    const vendorSource = form.vendorSource?.trim();
+    if (vendorSource) {
+      lines.push(`Vendor: ${vendorSource}`);
+    }
+    const consignmentPayoutPct = form.consignmentPayoutPct?.trim();
+    if (consignmentPayoutPct) {
+      lines.push(`Consignment payout: ${consignmentPayoutPct}`);
+    }
+    const location = locationLabel?.trim() || form.location?.trim();
+    if (location) {
+      lines.push(`Location: ${location}`);
+    }
+    return lines.length ? lines.join("\n") : null;
+  };
+
+  const buildIntakeInsertPayload = () => {
+    const price = parseFirstNumber(form.price);
+    const priceCents =
+      typeof price === "number" && !Number.isNaN(price)
+        ? Math.round(price * 100)
+        : null;
+    const normalizedCondition = normalizeConditionInput(form.condition);
+    const title = titlePreview?.trim() || form.itemName?.trim() || "";
+
+    return {
+      title,
+      sku: null,
+      brand: form.brand?.trim() || null,
+      category: form.categoryPath?.trim() || null,
+      condition: normalizedCondition || null,
+      price_cents: priceCents,
+      notes: buildNotes(),
+    };
+  };
+
+  const submitIntakeInsert = async (payload) => {
+    const response = await fetch("/api/intake", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const submitError = new Error(
-        data?.error || "Unable to validate intake payload"
+        data?.error || "Unable to save intake"
       );
       submitError.details = data?.details;
       throw submitError;
@@ -1198,11 +1249,14 @@ export default function Home() {
     event.preventDefault();
     setStatus("loading");
     setError(null);
+    setSavedId(null);
     setPreview(null);
 
     try {
-      const data = await validateIntake();
-      setPreview(data);
+      const payload = buildIntakeInsertPayload();
+      setPreview(payload);
+      const data = await submitIntakeInsert(payload);
+      setSavedId(data?.id ?? null);
       setStatus("success");
     } catch (submitError) {
       setStatus("error");
@@ -1213,27 +1267,21 @@ export default function Home() {
   const handleQuickSave = async () => {
     setQuickStatus("loading");
     setQuickError(null);
+    setQuickSavedId(null);
     setPreview(null);
 
     try {
-      const data = await validateIntake();
-      setPreview(data);
+      const payload = buildIntakeInsertPayload();
+      setPreview(payload);
+      const data = await submitIntakeInsert(payload);
+      setQuickSavedId(data?.id ?? null);
       setQuickStatus("success");
     } catch (submitError) {
       setQuickStatus("error");
       setQuickError(submitError.message);
       const field = submitError.details?.[0]?.path?.[0];
       const stepMap = {
-        brand: 0,
-        itemName: 1,
-        categoryPath: 2,
-        size: 3,
-        shopifyDescription: 4,
-        condition: 5,
-        cost: 6,
-        price: 7,
-        vendorSource: 8,
-        location: 9,
+        title: 1,
       };
       if (field && Object.prototype.hasOwnProperty.call(stepMap, field)) {
         setQuickStep(stepMap[field]);
@@ -1831,7 +1879,9 @@ export default function Home() {
                           : "Save intake"}
                       </button>
                       {quickStatus === "success" && (
-                        <span className="success">Saved & validated</span>
+                        <span className="success">
+                          Saved{quickSavedId ? ` (id: ${quickSavedId})` : ""}
+                        </span>
                       )}
                     </div>
                     {quickStatus === "error" && quickError && (
@@ -1849,19 +1899,19 @@ export default function Home() {
                     </div>
                     <div className="summary-row">
                       <span>Price</span>
-                      <strong>{formatUSD(preview.pricing.price)}</strong>
+                      <strong>
+                        {typeof preview.price_cents === "number"
+                          ? formatUSD((preview.price_cents / 100).toFixed(2))
+                          : "--"}
+                      </strong>
                     </div>
                     <div className="summary-row">
                       <span>Category</span>
-                      <strong>{preview.categoryPath}</strong>
+                      <strong>{preview.category || "--"}</strong>
                     </div>
                     <div className="summary-row">
                       <span>Size</span>
                       <strong>{form.size || "--"}</strong>
-                    </div>
-                    <div className="summary-row">
-                      <span>Tags</span>
-                      <strong>{preview.tags.join(", ")}</strong>
                     </div>
                     <details className="summary-code">
                       <summary>View normalized payload</summary>
@@ -2136,7 +2186,9 @@ export default function Home() {
                   {status === "loading" ? "Saving..." : "Save intake"}
                 </button>
                 {status === "success" && (
-                  <span className="success">Saved & validated</span>
+                  <span className="success">
+                    Saved{savedId ? ` (id: ${savedId})` : ""}
+                  </span>
                 )}
                 {status === "error" && <span className="error">{error}</span>}
               </div>

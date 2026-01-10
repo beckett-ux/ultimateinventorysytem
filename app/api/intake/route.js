@@ -57,8 +57,13 @@ export async function POST(request) {
 
   const parsed = intakeInsertSchema.safeParse(payload);
   if (!parsed.success) {
+    const firstIssue = parsed.error.issues?.[0];
     return NextResponse.json(
-      { ok: false, error: "Validation failed.", details: parsed.error.issues },
+      {
+        ok: false,
+        error: firstIssue?.message || "Validation failed.",
+        details: parsed.error.issues,
+      },
       { status: 400 }
     );
   }
