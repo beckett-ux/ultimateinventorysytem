@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { getShopify } from "@/lib/shopify";
+import { getShopify, getShopifyAppUrlOrigin } from "@/lib/shopify";
 
 export const runtime = "nodejs";
+
+const CALLBACK_PATH = "/api/shopify/callback";
+const SHOPIFY_OAUTH_CALLBACK_EVENT = "shopify_oauth_callback";
 
 const toBase64 = (value) => String(value || "").replace(/-/g, "+").replace(/_/g, "/");
 
@@ -52,6 +55,38 @@ const determineErrorStatus = (error) => {
 
 export async function GET(request) {
   try {
+    const requestUrl = new URL(request.url);
+    const hasHost = Boolean((requestUrl.searchParams.get("host") || "").trim());
+    const shopFromQuery = (requestUrl.searchParams.get("shop") || "").trim().toLowerCase();
+    const shopifyAppUrl = process.env.SHOPIFY_APP_URL || null;
+
+    let shopifyAppUrlOrigin = null;
+    let redirectUri = null;
+    try {
+      shopifyAppUrlOrigin = getShopifyAppUrlOrigin();
+      redirectUri = new URL(CALLBACK_PATH, shopifyAppUrlOrigin).toString();
+    } catch {
+      /* ignore diagnostics computation errors */
+    }
+
+    console.info(
+      JSON.stringify({
+        event: SHOPIFY_OAUTH_CALLBACK_EVENT,
+        shop: shopFromQuery || null,
+        hasHost,
+        shopifyAppUrl,
+        shopifyAppUrlOrigin,
+        redirectUri,
+        query: {
+          hasCode: requestUrl.searchParams.has("code"),
+          hasHmac: requestUrl.searchParams.has("hmac"),
+          hasState: requestUrl.searchParams.has("state"),
+          hasError: requestUrl.searchParams.has("error"),
+          hasErrorDescription: requestUrl.searchParams.has("error_description"),
+        },
+      })
+    );
+
     const shopify = getShopify();
     const { session, headers } = await shopify.auth.callback({
       rawRequest: request,
@@ -64,7 +99,6 @@ export async function GET(request) {
       await upsertShop({ shopDomain: session.shop, accessToken: session.accessToken });
     }
 
-    const requestUrl = new URL(request.url);
     const host = requestUrl.searchParams.get("host") || "";
     const shop = session?.shop || requestUrl.searchParams.get("shop") || "";
     const apiKey = process.env.SHOPIFY_API_KEY || process.env.NEXT_PUBLIC_SHOPIFY_API_KEY;
@@ -87,8 +121,29 @@ export async function GET(request) {
 
     return response;
   } catch (error) {
+    const requestUrl = new URL(request.url);
+    const hasHost = Boolean((requestUrl.searchParams.get("host") || "").trim());
+    const shopFromQuery = (requestUrl.searchParams.get("shop") || "").trim().toLowerCase();
+    const shopifyAppUrl = process.env.SHOPIFY_APP_URL || null;
+
+    let shopifyAppUrlOrigin = null;
+    let redirectUri = null;
+    try {
+      shopifyAppUrlOrigin = getShopifyAppUrlOrigin();
+      redirectUri = new URL(CALLBACK_PATH, shopifyAppUrlOrigin).toString();
+    } catch {
+      /* ignore diagnostics computation errors */
+    }
+
     return NextResponse.json(
-      { error: error?.message || "Unexpected error" },
+      {
+        error: error?.message || "Unexpected error",
+        shop: shopFromQuery || null,
+        hasHost,
+        shopifyAppUrl,
+        shopifyAppUrlOrigin,
+        redirectUri,
+      },
       { status: determineErrorStatus(error) }
     );
   }
