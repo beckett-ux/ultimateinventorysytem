@@ -48,6 +48,13 @@ export default function HomePage() {
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem" }}>
       <h1 style={{ marginBottom: "1rem" }}>Inventory Intake</h1>
+      <p style={{ marginTop: 0, marginBottom: "1rem", color: "#555" }}>
+        Legacy UI available at{" "}
+        <a href="/intake" style={{ color: "#2563eb" }}>
+          /intake
+        </a>
+        .
+      </p>
 
       <div style={{ display: "grid", gap: "0.5rem" }}>
         <label htmlFor="intake-title">Title</label>
