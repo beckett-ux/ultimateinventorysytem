@@ -15,5 +15,5 @@ export default function HomePage({ searchParams }) {
   }
 
   const queryString = query.toString();
-  redirect(queryString ? `/intake?${queryString}` : "/intake");
+  redirect(queryString ? `/dashboard?${queryString}` : "/dashboard");
 }
