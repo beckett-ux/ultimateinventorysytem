@@ -6,6 +6,68 @@ import { useRouter } from "next/navigation";
 import { approvedBrands } from "@/lib/approvedBrands";
 import SpeechMicButton from "@/components/SpeechMicButton";
 
+function ShopifyQueryGuardBanner() {
+  const router = useRouter();
+  const hasCorrectedUrl = useRef(false);
+  const [status, setStatus] = useState({
+    enabled: false,
+    shopOk: false,
+    hostOk: false,
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.location.pathname !== "/intake") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const shopOk = Boolean(params.get("shop"));
+    const hostOk = Boolean(params.get("host"));
+
+    setStatus({ enabled: true, shopOk, hostOk });
+
+    if (hasCorrectedUrl.current || (shopOk && hostOk)) {
+      return;
+    }
+
+    const referer = document.referrer;
+    if (!referer) {
+      return;
+    }
+
+    try {
+      const refererUrl = new URL(referer);
+      const refererParams = new URLSearchParams(refererUrl.search);
+      const refererShopOk = Boolean(refererParams.get("shop"));
+      const refererHostOk = Boolean(refererParams.get("host"));
+
+      if (!refererShopOk || !refererHostOk || !refererUrl.search) {
+        return;
+      }
+
+      hasCorrectedUrl.current = true;
+      router.replace(`/intake${refererUrl.search}`);
+    } catch {
+      return;
+    }
+  }, [router]);
+
+  if (!status.enabled) {
+    return null;
+  }
+
+  return (
+    <div style={{ fontSize: 12, color: "#666", padding: "4px 0" }}>
+      {status.shopOk ? "shop ok" : "shop missing"} /{" "}
+      {status.hostOk ? "host ok" : "host missing"}
+    </div>
+  );
+}
+
 const defaultForm = {
   brand: "",
   itemName: "",
@@ -657,7 +719,13 @@ export default function Home() {
     }
 
     setShop(normalized);
-    router.push(`/intake?shop=${encodeURIComponent(normalized)}`);
+    const nextParams =
+      typeof window === "undefined"
+        ? new URLSearchParams()
+        : new URLSearchParams(window.location.search);
+    nextParams.set("shop", normalized);
+    const nextQuery = nextParams.toString();
+    router.push(nextQuery ? `/intake?${nextQuery}` : "/intake");
   };
 
   const loadRecentItems = async () => {
@@ -1423,6 +1491,7 @@ export default function Home() {
   if (!shop) {
     return (
       <main className="intake-shell cardTight">
+        <ShopifyQueryGuardBanner />
         <header className="intakeHeaderBar">
           <div />
           <div className="intakeHeaderCenter">
@@ -1524,7 +1593,13 @@ export default function Home() {
             className="text-button"
             onClick={() => {
               setShop("");
-              router.push("/intake");
+              const nextParams =
+                typeof window === "undefined"
+                  ? new URLSearchParams()
+                  : new URLSearchParams(window.location.search);
+              nextParams.delete("shop");
+              const nextQuery = nextParams.toString();
+              router.push(nextQuery ? `/intake?${nextQuery}` : "/intake");
             }}
           >
             Use a different shop
@@ -1536,6 +1611,7 @@ export default function Home() {
 
   return (
     <main className="intake-shell cardTight">
+      <ShopifyQueryGuardBanner />
       <header className="intakeHeaderBar">
         <div />
         <div className="intakeHeaderCenter">
