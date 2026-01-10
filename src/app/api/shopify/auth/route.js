@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { getShopify } from "@/lib/shopify";
+import { getShopify, getShopifyAppUrlOrigin } from "@/lib/shopify";
 
 export const runtime = "nodejs";
+
+const CALLBACK_PATH = "/api/shopify/callback";
 
 const isValidShopDomain = (shop) =>
   /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shop);
@@ -23,12 +25,30 @@ export async function GET(request) {
 
   try {
     const shopify = getShopify();
-    return await shopify.auth.begin({
+    const canonicalRedirectUri = new URL(
+      CALLBACK_PATH,
+      getShopifyAppUrlOrigin()
+    ).toString();
+
+    const response = await shopify.auth.begin({
       shop,
-      callbackPath: "/api/shopify/callback",
+      callbackPath: CALLBACK_PATH,
       isOnline: false,
       rawRequest: request,
     });
+
+    const location = response?.headers?.get?.("location");
+    if (location) {
+      try {
+        const authUrl = new URL(location);
+        authUrl.searchParams.set("redirect_uri", canonicalRedirectUri);
+        response.headers.set("location", authUrl.toString());
+      } catch {
+        /* ignore invalid Location */
+      }
+    }
+
+    return response;
   } catch (error) {
     return NextResponse.json(
       { error: error?.message || "Shopify OAuth is not configured" },
