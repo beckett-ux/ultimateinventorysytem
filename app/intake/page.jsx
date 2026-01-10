@@ -6,6 +6,20 @@ import { useRouter } from "next/navigation";
 import { approvedBrands } from "@/lib/approvedBrands";
 import SpeechMicButton from "@/components/SpeechMicButton";
 
+const buildShopifyAuthUrl = (shopDomain) => {
+  if (typeof window === "undefined") {
+    if (!shopDomain) return "/api/shopify/auth";
+    return `/api/shopify/auth?shop=${encodeURIComponent(shopDomain)}`;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if (shopDomain) {
+    params.set("shop", shopDomain);
+  }
+  const query = params.toString();
+  return query ? `/api/shopify/auth?${query}` : "/api/shopify/auth";
+};
+
 function ShopifyQueryGuardBanner() {
   const router = useRouter();
   const hasCorrectedUrl = useRef(false);
@@ -709,6 +723,18 @@ export default function Home() {
       cancelled = true;
     };
   }, [shop]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!shop || shopInstallCheckStatus !== "success" || shopInstalled !== false) {
+      return;
+    }
+
+    window.location.replace(buildShopifyAuthUrl(shop));
+  }, [shop, shopInstallCheckStatus, shopInstalled]);
 
   const handleShopSubmit = (event) => {
     event.preventDefault();
@@ -1560,7 +1586,53 @@ export default function Home() {
   }
 
   if (shopInstalled === false) {
-    const installUrl = `/api/shopify/auth?shop=${encodeURIComponent(shop)}`;
+    const installUrl = buildShopifyAuthUrl(shop);
+
+    if (shop && shopInstallCheckStatus === "success") {
+      return (
+        <main className="intake-shell cardTight">
+          <header className="intakeHeaderBar">
+            <div />
+            <div className="intakeHeaderCenter">
+              <h1 className="intakeTitle">Inventory Intake</h1>
+              <div className="intakeSub">STREET COMMERCE</div>
+            </div>
+            <div />
+          </header>
+
+          <section className="intake-section">
+            <div className="section-heading">
+              <div>
+                <h2>Redirecting to Shopify</h2>
+                <p className="hint">{shop}</p>
+              </div>
+            </div>
+
+            <a className="primary-button" href={installUrl}>
+              Continue to Shopify
+            </a>
+
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setShop("");
+                const nextParams =
+                  typeof window === "undefined"
+                    ? new URLSearchParams()
+                    : new URLSearchParams(window.location.search);
+                nextParams.delete("shop");
+                const nextQuery = nextParams.toString();
+                router.push(nextQuery ? `/intake?${nextQuery}` : "/intake");
+              }}
+            >
+              Use a different shop
+            </button>
+          </section>
+        </main>
+      );
+    }
+
     return (
       <main className="intake-shell cardTight">
         <header className="intakeHeaderBar">
