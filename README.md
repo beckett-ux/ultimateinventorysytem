@@ -36,15 +36,20 @@ Required env vars:
 - `SHOPIFY_API_SECRET`
 - `SHOPIFY_SCOPES` (comma-separated, example: `write_products,read_locations`)
 - `SHOPIFY_APP_URL` (example: `http://localhost:3000` or your Vercel preview URL)
+- `NEXT_PUBLIC_SHOPIFY_API_KEY` (same value as `SHOPIFY_API_KEY`; used by Shopify App Bridge in the browser)
 - `DATABASE_URL` (sessions are stored in Postgres; see `db/schema.sql`)
 
 Shopify Partners settings (per environment):
 - **App URL**
-  - Local: `http://localhost:3000`
-  - Vercel preview: `https://<your-preview-domain>`
+  - Local: `http://localhost:3000/app`
+  - Vercel preview: `https://<your-preview-domain>/app`
 - **Allowed redirection URL(s)**
   - Local: `http://localhost:3000/api/shopify/callback`
   - Vercel preview: `https://<your-preview-domain>/api/shopify/callback`
+
+Embedded (Shopify Admin):
+- The embedded entry route is `/app` and is wrapped in a Shopify App Bridge shell.
+- `/app` requires an offline session; unauthenticated access redirects to the install/auth flow.
 
 Install flow:
 - Visit `GET /api/shopify/auth?shop=<your-dev-store>.myshopify.com`
