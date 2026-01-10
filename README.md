@@ -9,6 +9,7 @@
 ## Local Database
 
 - Required env var: `DATABASE_URL` (set it in `.env.local`; `.env.local` is not committed).
+- `DATABASE_URL` must be a plain Postgres URL (do not append `?schema=public`).
 - Local Postgres: run Postgres locally (for example via Docker) using the container name `intake-postgres`.
 - Canonical schema: `db/schema.sql` (creates the `inventory_items` table).
 - Apply the schema to the running `intake-postgres` container using `psql`:
@@ -20,3 +21,7 @@
   - The schema applied cleanly and `inventory_items` exists (for example: `docker exec -it intake-postgres psql -U postgres -d intake -c \"\\\\d inventory_items\"`).
   - Start the dev server with `npm run dev`, open `http://localhost:3000`, enter a Title, and click Save.
   - Confirm the UI reports success and returns an `id`.
+
+## Troubleshooting
+
+- If Postgres connections fail with `unrecognized configuration parameter "schema"`, remove `?schema=public` from `DATABASE_URL` (it breaks `postgres`/postgres.js connections).
