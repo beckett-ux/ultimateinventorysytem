@@ -4,6 +4,8 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+import { navigateOutsideIframe } from "@/lib/navigateOutsideIframe";
+
 const extractNumericLocationId = (gid) => {
   if (!gid) return null;
   const match = String(gid).match(/\/(\d+)$/);
@@ -218,7 +220,14 @@ function SettingsContent() {
           <Link className="text-button" href={intakeUrl}>
             Back to intake
           </Link>
-          <a className="text-button" href={installUrl}>
+          <a
+            className="text-button"
+            href={installUrl}
+            onClick={(event) => {
+              event.preventDefault();
+              navigateOutsideIframe(installUrl);
+            }}
+          >
             Install app
           </a>
         </div>
