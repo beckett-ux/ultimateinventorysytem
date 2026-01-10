@@ -14,6 +14,53 @@ const intakeInsertSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
+export async function GET() {
+  try {
+    const rows = await sql`
+      SELECT
+        id,
+        title,
+        brand,
+        category,
+        condition,
+        price_cents,
+        created_at
+      FROM inventory_items
+      ORDER BY created_at DESC, id DESC
+      LIMIT 10
+    `;
+
+    return NextResponse.json({ ok: true, items: rows }, { status: 200 });
+  } catch (error) {
+    if (error?.code === "MISSING_DATABASE_URL") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "DATABASE_URL is not configured. Set DATABASE_URL in your environment (for local dev, in .env.local).",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (error?.code === "42P01") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'Database table "inventory_items" is missing. Run the schema bootstrap steps in the README (Local Database) to create it.',
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      { ok: false, error: error?.message || "Unexpected error." },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request) {
   const diagnostics = {
     method: request.method,
