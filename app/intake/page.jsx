@@ -553,6 +553,7 @@ export default function Home() {
   const [recentItems, setRecentItems] = useState([]);
   const [recentStatus, setRecentStatus] = useState("idle");
   const [recentError, setRecentError] = useState("");
+  const [shopifyCreateState, setShopifyCreateState] = useState({});
   const [quickMode, setQuickMode] = useState(true);
   const [quickStep, setQuickStep] = useState(0);
   const [quickStatus, setQuickStatus] = useState("idle");
@@ -675,6 +676,64 @@ export default function Home() {
     } catch (fetchError) {
       setRecentStatus("error");
       setRecentError(fetchError?.message || "Unable to load recent saves.");
+    }
+  };
+
+  const setCreateStatus = (inventoryItemId, nextState) => {
+    setShopifyCreateState((prev) => ({
+      ...prev,
+      [inventoryItemId]: { ...(prev[inventoryItemId] || {}), ...nextState },
+    }));
+  };
+
+  const handleCreateShopifyProduct = async (inventoryItemId) => {
+    if (!inventoryItemId) {
+      return;
+    }
+
+    setCreateStatus(inventoryItemId, {
+      status: "loading",
+      message: "",
+      handle: null,
+      productId: null,
+    });
+
+    try {
+      const response = await fetch("/api/shopify/create-product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inventoryItemId }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.ok === false) {
+        setCreateStatus(inventoryItemId, {
+          status: "error",
+          message:
+            data?.error ||
+            "Unable to create Shopify product. Check your environment configuration.",
+        });
+        return;
+      }
+
+      const productId = data?.productId ?? data?.id ?? data?.product?.id ?? null;
+      const handle = data?.handle ?? data?.product?.handle ?? null;
+      const successMessage = productId
+        ? `Created product ${productId}${handle ? ` (${handle})` : ""}`
+        : "Created product in Shopify.";
+
+      setCreateStatus(inventoryItemId, {
+        status: "success",
+        message: successMessage,
+        handle,
+        productId,
+      });
+    } catch (createError) {
+      setCreateStatus(inventoryItemId, {
+        status: "error",
+        message:
+          createError?.message || "Unexpected error creating Shopify product.",
+      });
     }
   };
 
@@ -2270,50 +2329,85 @@ export default function Home() {
             )}
             {recentItems.length > 0 && (
               <ul className="checklist-list">
-                {recentItems.map((item, index) => (
-                  <li
-                    key={
-                      item?.id
-                        ? String(item.id)
-                        : `${String(item?.created_at ?? "row")}-${index}`
-                    }
-                  >
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <div>
-                        <strong className="preview-value">
-                          {item?.title || "(untitled)"}
-                        </strong>
+                {recentItems.map((item, index) => {
+                  const createState = shopifyCreateState[item?.id] || {};
+                  const isCreating = createState.status === "loading";
+
+                  return (
+                    <li
+                      key={
+                        item?.id
+                          ? String(item.id)
+                          : `${String(item?.created_at ?? "row")}-${index}`
+                      }
+                    >
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <div>
+                          <strong className="preview-value">
+                            {item?.title || "(untitled)"}
+                          </strong>
+                        </div>
+                        <div className="hint">
+                          {item?.brand ? `Brand: ${item.brand}` : null}
+                          {item?.brand && item?.category ? " · " : null}
+                          {item?.category ? `Category: ${item.category}` : null}
+                          {(item?.brand || item?.category) && item?.condition
+                            ? " · "
+                            : null}
+                          {item?.condition
+                            ? `Condition: ${item.condition}`
+                            : null}
+                          {(item?.brand ||
+                            item?.category ||
+                            item?.condition) &&
+                          item?.price_cents !== null &&
+                          item?.price_cents !== undefined
+                            ? " · "
+                            : null}
+                          {item?.price_cents !== null &&
+                          item?.price_cents !== undefined
+                            ? `Price: ${formatPriceCents(item.price_cents)}`
+                            : null}
+                        </div>
+                        <div className="hint">
+                          id: {String(item?.id ?? "")}
+                          {item?.created_at ? " · " : null}
+                          {item?.created_at
+                            ? formatDateTime(item.created_at)
+                            : null}
+                        </div>
+                        <div
+                          className="hint"
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="primary-button"
+                            disabled={isCreating}
+                            onClick={() => handleCreateShopifyProduct(item?.id)}
+                          >
+                            {isCreating ? "Creating..." : "Create in Shopify"}
+                          </button>
+                          {createState.status === "success" && (
+                            <span className="success">
+                              {createState.message || "Created product."}
+                            </span>
+                          )}
+                          {createState.status === "error" && (
+                            <span className="error">
+                              {createState.message || "Unable to create product."}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="hint">
-                        {item?.brand ? `Brand: ${item.brand}` : null}
-                        {item?.brand && item?.category ? " · " : null}
-                        {item?.category ? `Category: ${item.category}` : null}
-                        {(item?.brand || item?.category) && item?.condition
-                          ? " · "
-                          : null}
-                        {item?.condition ? `Condition: ${item.condition}` : null}
-                        {(item?.brand ||
-                          item?.category ||
-                          item?.condition) &&
-                        item?.price_cents !== null &&
-                        item?.price_cents !== undefined
-                          ? " · "
-                          : null}
-                        {item?.price_cents !== null &&
-                        item?.price_cents !== undefined
-                          ? `Price: ${formatPriceCents(item.price_cents)}`
-                          : null}
-                      </div>
-                      <div className="hint">
-                        id: {String(item?.id ?? "")}
-                        {item?.created_at ? " · " : null}
-                        {item?.created_at
-                          ? formatDateTime(item.created_at)
-                          : null}
-                      </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>

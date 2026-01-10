@@ -22,6 +22,13 @@
   - Start the dev server with `npm run dev`, open `http://localhost:3000`, enter a Title, and click Save.
   - Confirm the UI reports success and returns an `id`.
 
+## Shopify (single store, admin token)
+
+- Set `SHOPIFY_SHOP_DOMAIN` (example: `mystore.myshopify.com`) and `SHOPIFY_ADMIN_ACCESS_TOKEN` in `.env.local`. The token must include `write_products` (add inventory scopes if you plan to manage stock).
+- Optional: override `SHOPIFY_API_VERSION` (defaults to `2024-10`).
+- Create a product from a saved intake row via `POST /api/shopify/create-product` with body `{ "inventoryItemId": <id> }`. Missing env vars return a 501-style JSON error explaining what to set.
+- In the UI, save an intake and use the **Create in Shopify** button in Recent saves to trigger product creation with the env-based credentials (no OAuth required for this path).
+
 ## Troubleshooting
 
 - If Postgres connections fail with `unrecognized configuration parameter "schema"`, remove `?schema=public` from `DATABASE_URL` (it breaks `postgres`/postgres.js connections).
