@@ -1,27 +1,38 @@
 import { NextResponse } from "next/server";
-import sql, { normalizeShopDomain } from "@/lib/db";
+import sql, { getShopAccessToken, normalizeShopDomain } from "@/lib/db";
+import { getShopFromRequest, loadOfflineSession } from "@/lib/shopify";
 
 export const runtime = "nodejs";
 
 const sanitizeShopDomain = (value) =>
   normalizeShopDomain((value || "").replace(/^https?:\/\//i, "").replace(/\/+$/, ""));
 
-const SHOP_DOMAIN = sanitizeShopDomain(process.env.SHOPIFY_SHOP_DOMAIN);
-const ADMIN_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-10";
 
 const isValidShopDomain = (shop) =>
   /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shop || "");
 
-const missingEnvResponse = () =>
+const unauthorizedResponse = (shop) =>
   NextResponse.json(
     {
       ok: false,
-      error:
-        "Shopify Admin API is not configured. Set SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN in your environment (for local dev, .env.local).",
-      code: "missing_shopify_env",
+      error: shop
+        ? `No Shopify session found for ${shop}. Install the app for this shop and try again.`
+        : "No Shopify shop detected. Add ?shop=<shop>.myshopify.com and install the app to continue.",
+      code: "shopify_auth_required",
+      action: "install_app",
     },
-    { status: 501 }
+    { status: 401 }
+  );
+
+const shopifyConfigErrorResponse = (error) =>
+  NextResponse.json(
+    {
+      ok: false,
+      error: error?.message || "Shopify OAuth is not configured.",
+      code: "shopify_config_error",
+    },
+    { status: 500 }
   );
 
 const normalizeInventoryItemId = (value) => {
@@ -72,15 +83,50 @@ const buildProductPayload = (item) => {
 };
 
 export async function POST(request) {
-  if (!SHOP_DOMAIN || !ADMIN_ACCESS_TOKEN) {
-    return missingEnvResponse();
+  const requestShop = sanitizeShopDomain(getShopFromRequest(request));
+  if (!requestShop) {
+    return unauthorizedResponse(null);
   }
 
-  if (!isValidShopDomain(SHOP_DOMAIN)) {
+  if (!isValidShopDomain(requestShop)) {
     return NextResponse.json(
-      { ok: false, error: "Invalid SHOPIFY_SHOP_DOMAIN", code: "invalid_shop" },
+      { ok: false, error: "Invalid `shop` domain", code: "invalid_shop" },
       { status: 400 }
     );
+  }
+
+  let accessToken = null;
+  try {
+    const { session } = await loadOfflineSession({ request, shop: requestShop });
+    accessToken = session?.accessToken || null;
+  } catch (error) {
+    return shopifyConfigErrorResponse(error);
+  }
+
+  if (!accessToken) {
+    try {
+      accessToken = await getShopAccessToken(requestShop);
+    } catch (error) {
+      if (error?.code === "MISSING_DATABASE_URL") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "DATABASE_URL is not configured. Set DATABASE_URL in your environment (for local dev, .env.local).",
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(
+        { ok: false, error: error?.message || "Unexpected database error." },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (!accessToken) {
+    return unauthorizedResponse(requestShop);
   }
 
   let body = {};
@@ -147,7 +193,7 @@ export async function POST(request) {
     );
   }
 
-  const endpoint = `https://${SHOP_DOMAIN}/admin/api/${API_VERSION}/products.json`;
+  const endpoint = `https://${requestShop}/admin/api/${API_VERSION}/products.json`;
   const productPayload = buildProductPayload(inventoryItem);
 
   let response;
@@ -157,7 +203,7 @@ export async function POST(request) {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        "X-Shopify-Access-Token": ADMIN_ACCESS_TOKEN,
+        "X-Shopify-Access-Token": accessToken,
       },
       body: JSON.stringify(productPayload),
     });

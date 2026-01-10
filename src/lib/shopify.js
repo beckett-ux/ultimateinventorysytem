@@ -1,2 +1,2 @@
-export { getShopify } from "../../lib/shopify";
+export { getShopify, getShopFromRequest, loadOfflineSession } from "../../lib/shopify";
 
