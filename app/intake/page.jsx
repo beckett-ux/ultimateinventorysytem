@@ -149,6 +149,31 @@ const formatUSD = (value) => {
   return `$${value}`;
 };
 
+const formatPriceCents = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return "";
+  }
+  return (parsed / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+};
+
+const formatDateTime = (value) => {
+  if (!value) {
+    return "";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleString();
+};
+
 const dedupeAdjacentWords = (value) => {
   if (!value) {
     return "";
@@ -525,6 +550,9 @@ export default function Home() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState(null);
   const [savedId, setSavedId] = useState(null);
+  const [recentItems, setRecentItems] = useState([]);
+  const [recentStatus, setRecentStatus] = useState("idle");
+  const [recentError, setRecentError] = useState("");
   const [quickMode, setQuickMode] = useState(true);
   const [quickStep, setQuickStep] = useState(0);
   const [quickStatus, setQuickStatus] = useState("idle");
@@ -630,6 +658,32 @@ export default function Home() {
     setShop(normalized);
     router.push(`/intake?shop=${encodeURIComponent(normalized)}`);
   };
+
+  const loadRecentItems = async () => {
+    setRecentStatus("loading");
+    setRecentError("");
+
+    try {
+      const response = await fetch("/api/intake");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to load recent saves.");
+      }
+
+      setRecentItems(Array.isArray(data?.items) ? data.items : []);
+      setRecentStatus("success");
+    } catch (fetchError) {
+      setRecentStatus("error");
+      setRecentError(fetchError?.message || "Unable to load recent saves.");
+    }
+  };
+
+  useEffect(() => {
+    if (shopInstalled !== true) {
+      return;
+    }
+    loadRecentItems();
+  }, [shopInstalled]);
 
   const itemNameRef = useRef(null);
   const brandInputRef = useRef(null);
@@ -1258,6 +1312,7 @@ export default function Home() {
       const data = await submitIntakeInsert(payload);
       setSavedId(data?.id ?? null);
       setStatus("success");
+      loadRecentItems();
     } catch (submitError) {
       setStatus("error");
       setError(submitError.message);
@@ -1276,6 +1331,7 @@ export default function Home() {
       const data = await submitIntakeInsert(payload);
       setQuickSavedId(data?.id ?? null);
       setQuickStatus("success");
+      loadRecentItems();
     } catch (submitError) {
       setQuickStatus("error");
       setQuickError(submitError.message);
@@ -2194,6 +2250,73 @@ export default function Home() {
               </div>
             </>
           )}
+
+          <section className="intake-section">
+            <div className="section-heading">
+              <div>
+                <h2>Recent saves</h2>
+                <p className="hint">Latest 10 rows saved to Postgres.</p>
+              </div>
+            </div>
+
+            {recentStatus === "loading" && (
+              <p className="hint">Loading recent saves…</p>
+            )}
+            {recentStatus === "error" && (
+              <div className="error">{recentError}</div>
+            )}
+            {recentStatus !== "loading" && recentItems.length === 0 && (
+              <p className="hint">No recent saves yet.</p>
+            )}
+            {recentItems.length > 0 && (
+              <ul className="checklist-list">
+                {recentItems.map((item, index) => (
+                  <li
+                    key={
+                      item?.id
+                        ? String(item.id)
+                        : `${String(item?.created_at ?? "row")}-${index}`
+                    }
+                  >
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div>
+                        <strong className="preview-value">
+                          {item?.title || "(untitled)"}
+                        </strong>
+                      </div>
+                      <div className="hint">
+                        {item?.brand ? `Brand: ${item.brand}` : null}
+                        {item?.brand && item?.category ? " · " : null}
+                        {item?.category ? `Category: ${item.category}` : null}
+                        {(item?.brand || item?.category) && item?.condition
+                          ? " · "
+                          : null}
+                        {item?.condition ? `Condition: ${item.condition}` : null}
+                        {(item?.brand ||
+                          item?.category ||
+                          item?.condition) &&
+                        item?.price_cents !== null &&
+                        item?.price_cents !== undefined
+                          ? " · "
+                          : null}
+                        {item?.price_cents !== null &&
+                        item?.price_cents !== undefined
+                          ? `Price: ${formatPriceCents(item.price_cents)}`
+                          : null}
+                      </div>
+                      <div className="hint">
+                        id: {String(item?.id ?? "")}
+                        {item?.created_at ? " · " : null}
+                        {item?.created_at
+                          ? formatDateTime(item.created_at)
+                          : null}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </form>
 
         <ShopifyPreview
