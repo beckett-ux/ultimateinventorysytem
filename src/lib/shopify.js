@@ -3,5 +3,6 @@ export {
   getShopFromRequest,
   loadOfflineSession,
   getShopifyAppUrlOrigin,
+  tryGetShopifyAppUrlOrigin,
 } from "../../lib/shopify";
 
