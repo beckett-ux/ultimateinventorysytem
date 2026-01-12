@@ -92,6 +92,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const shop = (searchParams.get("shop") || "").trim().toLowerCase();
   const hasHost = Boolean((searchParams.get("host") || "").trim());
+  const isDebug = (searchParams.get("debug") || "").trim() === "1";
 
   if (!shop) {
     return NextResponse.json(
@@ -104,10 +105,31 @@ export async function GET(request) {
     return NextResponse.json({ error: "Invalid `shop` domain" }, { status: 400 });
   }
 
+  const originDecision = resolveRedirectOrigin({ requestUrl: request.url });
+
+  if (isDebug) {
+    const redirectUri = originDecision.chosenOrigin
+      ? new URL(CALLBACK_PATH, originDecision.chosenOrigin).toString()
+      : null;
+
+    const payload = {
+      vercelEnv: process.env.VERCEL_ENV || null,
+      chosenOrigin: originDecision.chosenOrigin,
+      requestOrigin: originDecision.requestOrigin,
+      callbackPath: CALLBACK_PATH,
+      redirectUri,
+    };
+
+    if (originDecision.canonicalOrigin) {
+      payload.canonicalOrigin = originDecision.canonicalOrigin;
+    }
+
+    return NextResponse.json(payload);
+  }
+
   try {
     const shopifyAppUrl = process.env.SHOPIFY_APP_URL || null;
-    const { env, canonicalOrigin, requestOrigin, chosenOrigin, reason } =
-      resolveRedirectOrigin({ requestUrl: request.url });
+    const { env, canonicalOrigin, requestOrigin, chosenOrigin, reason } = originDecision;
 
     if (!chosenOrigin) {
       return NextResponse.json(
