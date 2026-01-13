@@ -8,7 +8,6 @@ import {
 
 export const runtime = "nodejs";
 
-const SHOPIFY_OAUTH_BEGIN_EVENT = "shopify_oauth_begin";
 const SHOPIFY_OAUTH_REDIRECT_URI_EVENT = "shopify_oauth_redirect_uri";
 
 const isValidShopDomain = (shop) =>
@@ -35,7 +34,7 @@ export async function GET(request) {
   let callbackUrl = null;
 
   try {
-    callbackUrl = getShopifyOAuthCallbackUrl();
+    callbackUrl = getShopifyOAuthCallbackUrl({ request });
   } catch (error) {
     return NextResponse.json(
       {
@@ -70,17 +69,6 @@ export async function GET(request) {
       })
     );
 
-    console.info(
-      JSON.stringify({
-        event: SHOPIFY_OAUTH_BEGIN_EVENT,
-        shop,
-        hasHost,
-        callbackPath: SHOPIFY_OAUTH_CALLBACK_PATH,
-        canonicalOrigin,
-        callbackUrl,
-      })
-    );
-
     const response = await shopify.auth.begin({
       shop,
       callbackPath: SHOPIFY_OAUTH_CALLBACK_PATH,
@@ -89,17 +77,38 @@ export async function GET(request) {
     });
 
     const location = response?.headers?.get?.("location");
-    if (location) {
+    if (!location) return response;
+
+    let authUrl = null;
+    try {
+      authUrl = new URL(location);
+    } catch {
       try {
-        const authUrl = new URL(location);
-        authUrl.searchParams.set("redirect_uri", callbackUrl);
-        response.headers.set("location", authUrl.toString());
+        authUrl = new URL(location, request.url);
       } catch {
-        /* ignore invalid Location */
+        authUrl = null;
       }
     }
 
-    return response;
+    if (!authUrl) return response;
+
+    authUrl.searchParams.set("redirect_uri", callbackUrl);
+
+    const redirectResponse = NextResponse.redirect(authUrl.toString(), 302);
+    const setCookies =
+      typeof response?.headers?.getSetCookie === "function"
+        ? response.headers.getSetCookie()
+        : response?.headers?.get?.("set-cookie")
+          ? [response.headers.get("set-cookie")]
+          : [];
+
+    for (const cookie of setCookies) {
+      if (cookie) {
+        redirectResponse.headers.append("set-cookie", cookie);
+      }
+    }
+
+    return redirectResponse;
   } catch (error) {
     const shopifyAppUrl = process.env.SHOPIFY_APP_URL || null;
 
