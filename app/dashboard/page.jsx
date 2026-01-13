@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { loadOfflineSession } from "@/lib/shopify";
-import { NavigateOutsideIframeOnMount } from "@/lib/navigateOutsideIframe";
+import ShopifyConnectionGate from "./shopify-connection-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +61,9 @@ export default async function DashboardPage({ searchParams }) {
 
   const intakeHref = queryString ? `/intake?${queryString}` : "/intake";
   const installHref = queryString ? `/api/shopify/auth?${queryString}` : "/api/shopify/auth";
+  const debugQuery = new URLSearchParams(query);
+  debugQuery.set("debug", "1");
+  const debugHref = `/api/shopify/auth?${debugQuery.toString()}`;
 
   const { session } = shopOk ? await loadOfflineSession({ shop }) : { session: null };
 
@@ -84,20 +87,7 @@ export default async function DashboardPage({ searchParams }) {
         </div>
 
         {!session?.accessToken ? (
-          <>
-            <NavigateOutsideIframeOnMount url={installHref} replace />
-            <p className="hint" style={{ marginTop: 0 }}>
-              Checking shop connection…
-            </p>
-            <a
-              className="primary-button"
-              href={installHref}
-              target="_top"
-              rel="noopener noreferrer"
-            >
-              Continue
-            </a>
-          </>
+          <ShopifyConnectionGate installHref={installHref} debugHref={debugHref} />
         ) : (
           <Link className="primary-button" href={intakeHref}>
             Open Inventory Intake
@@ -107,3 +97,4 @@ export default async function DashboardPage({ searchParams }) {
     </main>
   );
 }
+
