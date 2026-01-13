@@ -41,11 +41,15 @@ Required env vars:
 
 Shopify Partners settings (per environment):
 - **App URL**
-  - Local: `http://localhost:3000/app`
-  - Vercel preview: `https://<your-preview-domain>/app`
+  - Set to `${SHOPIFY_APP_URL}/app` (examples: `http://localhost:3000/app`, `https://<your-preview-domain>/app`)
 - **Allowed redirection URL(s)**
-  - Local: `http://localhost:3000/api/shopify/callback`
-  - Vercel preview: `https://<your-preview-domain>/api/shopify/callback`
+  - Source of truth: `GET /api/shopify/diagnostics`
+  - Copy `recommendedAllowedRedirectUrls` (or `callbackUrl`) into Shopify Partners exactly.
+  - The allowlist must match `callbackUrl` character-for-character (same origin, same path, no trailing slash).
+
+Canonical domain approach:
+- Installs should be started from the same origin as `SHOPIFY_APP_URL` (that origin is also used to compute the OAuth `redirect_uri`).
+- If you change domains (local ↔ preview ↔ production), update `SHOPIFY_APP_URL` and re-copy the allowlist from `/api/shopify/diagnostics`.
 
 Embedded (Shopify Admin):
 - The embedded entry route is `/app` and is wrapped in a Shopify App Bridge shell.
