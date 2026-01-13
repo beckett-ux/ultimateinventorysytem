@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
-import { getShopify, getShopifyAppUrlOrigin } from "@/lib/shopify";
+import {
+  SHOPIFY_OAUTH_CALLBACK_PATH,
+  getShopify,
+  getShopifyAppUrlOrigin,
+  getShopifyOAuthCallbackUrl,
+} from "@/lib/shopify";
 
 export const runtime = "nodejs";
 
-const CALLBACK_PATH = "/api/shopify/callback";
 const SHOPIFY_OAUTH_CALLBACK_EVENT = "shopify_oauth_callback";
 
 const toBase64 = (value) => String(value || "").replace(/-/g, "+").replace(/_/g, "/");
@@ -64,7 +68,7 @@ export async function GET(request) {
     let redirectUri = null;
     try {
       shopifyAppUrlOrigin = getShopifyAppUrlOrigin();
-      redirectUri = new URL(CALLBACK_PATH, shopifyAppUrlOrigin).toString();
+      redirectUri = getShopifyOAuthCallbackUrl();
     } catch {
       /* ignore diagnostics computation errors */
     }
@@ -77,6 +81,7 @@ export async function GET(request) {
         shopifyAppUrl,
         shopifyAppUrlOrigin,
         redirectUri,
+        callbackPath: SHOPIFY_OAUTH_CALLBACK_PATH,
         query: {
           hasCode: requestUrl.searchParams.has("code"),
           hasHmac: requestUrl.searchParams.has("hmac"),
@@ -129,7 +134,7 @@ export async function GET(request) {
     let redirectUri = null;
     try {
       shopifyAppUrlOrigin = getShopifyAppUrlOrigin();
-      redirectUri = new URL(CALLBACK_PATH, shopifyAppUrlOrigin).toString();
+      redirectUri = getShopifyOAuthCallbackUrl();
     } catch {
       /* ignore diagnostics computation errors */
     }
@@ -142,6 +147,7 @@ export async function GET(request) {
         shopifyAppUrl,
         shopifyAppUrlOrigin,
         redirectUri,
+        callbackPath: SHOPIFY_OAUTH_CALLBACK_PATH,
       },
       { status: determineErrorStatus(error) }
     );
